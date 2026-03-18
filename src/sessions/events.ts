@@ -1,0 +1,73 @@
+import type { PendingQuestion, RelayEvent } from '../types.js';
+
+const pending = new Map<string, PendingQuestion>();
+let nextShortId = 1;
+let insertionOrder = 0;
+
+export function addPending(event: RelayEvent, channelMessageId?: string): string {
+  const shortId = String(nextShortId++);
+  pending.set(event.id, {
+    event,
+    notifiedAt: Date.now(),
+    channelMessageId,
+    shortId,
+    order: insertionOrder++,
+  });
+  return shortId;
+}
+
+export function getPending(eventId: string): PendingQuestion | undefined {
+  return pending.get(eventId);
+}
+
+export function removePending(eventId: string): void {
+  pending.delete(eventId);
+}
+
+export function listPending(): PendingQuestion[] {
+  return Array.from(pending.values());
+}
+
+export interface ResolvedResponse {
+  question: PendingQuestion;
+  response: string;
+}
+
+export function resolveResponse(rawText: string): ResolvedResponse | null {
+  const all = listPending();
+  if (all.length === 0) return null;
+
+  const text = rawText.trim();
+
+  // Try "#N response" format for multiple pending
+  const numbered = text.match(/^#?(\d+)\s+(.+)$/s);
+  if (numbered) {
+    const num = numbered[1];
+    const response = numbered[2].trim();
+    const match = all.find(q => q.shortId === num);
+    if (match) {
+      return { question: match, response };
+    }
+  }
+
+  // Single pending → any text goes to it
+  if (all.length === 1) {
+    return { question: all[0], response: text };
+  }
+
+  // Multiple pending: route "allow"/"deny"/"yes"/"no" to most recent permission_prompt
+  const lower = text.toLowerCase();
+  if (['allow', 'deny', 'yes', 'no', 'y', 'n'].includes(lower)) {
+    const permissionQuestions = all
+      .filter(q => q.event.type === 'permission_prompt')
+      .sort((a, b) => b.order - a.order);
+
+    if (permissionQuestions.length > 0) {
+      return { question: permissionQuestions[0], response: text };
+    }
+  }
+
+  // Fallback: route to most recent pending
+  const mostRecent = all.sort((a, b) => b.order - a.order)[0];
+  return { question: mostRecent, response: text };
+}

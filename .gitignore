@@ -4,4 +4,7 @@ dist/
 .env
 .env.local
 *.pid
-sessions/
+# Runtime session data (not src/sessions/)
+/sessions/
+.idea/
+tools.yaml

@@ -1,0 +1,42 @@
+{
+  "name": "claude-relay",
+  "version": "0.1.0",
+  "description": "Remote notification and response relay for Claude Code CLI sessions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "claude-relay": "dist/cli/index.js",
+    "claude-relay-hook": "dist/hooks/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/cli/index.ts",
+    "test": "node --test dist/**/*.test.js",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist/",
+    "systemd/"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "notification",
+    "relay",
+    "ntfy"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^13.1.0",
+    "fastify": "^5.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "tsx": "^4.19.0"
+  }
+}
