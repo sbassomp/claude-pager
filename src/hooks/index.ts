@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'node:child_process';
 import { registerSession } from '../sessions/tracker.js';
 import { ensureDataDir } from '../config/index.js';
 import type { SessionInfo } from '../types.js';
@@ -12,6 +13,15 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf-8');
 }
 
+function getActiveWindowId(): number | undefined {
+  try {
+    const out = execFileSync('xdotool', ['getactivewindow'], { timeout: 2000 });
+    return parseInt(out.toString().trim(), 10) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function handleSessionStart(): Promise<void> {
   const input = await readStdin();
   const data = JSON.parse(input);
@@ -21,6 +31,7 @@ async function handleSessionStart(): Promise<void> {
     pid: process.ppid,
     tty: process.env.TTY || '',
     cwd: data.cwd || process.cwd(),
+    windowId: getActiveWindowId(),
     timestamp: Date.now(),
   };
 
@@ -30,6 +41,12 @@ async function handleSessionStart(): Promise<void> {
 
 async function handleNotification(): Promise<void> {
   const input = await readStdin();
+  const data = JSON.parse(input);
+
+  // Only forward permission prompts for now
+  if (data.notification_type !== 'permission_prompt') {
+    return;
+  }
 
   // Forward to daemon
   try {

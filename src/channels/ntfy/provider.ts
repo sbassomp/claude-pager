@@ -6,7 +6,6 @@ export class NtfyProvider implements ChannelProvider {
   private abortController: AbortController | null = null;
   private readonly config: NtfyConfig;
   private processedIds = new Set<string>();
-  private lastPollTime = 0;
 
   constructor(config: NtfyConfig) {
     this.config = config;
@@ -58,7 +57,6 @@ export class NtfyProvider implements ChannelProvider {
       }
 
       const data = (await res.json()) as { id?: string };
-      // Track our own message so we don't process it as a response
       if (data.id) {
         this.processedIds.add(data.id);
       }
@@ -68,68 +66,61 @@ export class NtfyProvider implements ChannelProvider {
     }
   }
 
-  startListening(onResponse: (rawText: string) => void): void {
+  startListening(onResponse: (rawText: string) => void | Promise<void>): void {
     this.stopListening();
     this.abortController = new AbortController();
-    this.lastPollTime = Math.floor(Date.now() / 1000);
-
     this.poll(onResponse);
   }
 
   private async poll(
-    onResponse: (rawText: string) => void,
+    onResponse: (rawText: string) => void | Promise<void>,
   ): Promise<void> {
-    while (this.abortController && !this.abortController.signal.aborted) {
+    const signal = this.abortController!.signal;
+
+    let pollCount = 0;
+    while (!signal.aborted) {
       try {
-        const url = `${this.topicUrl}/json?poll=1&since=${this.lastPollTime}`;
+        pollCount++;
+        if (pollCount % 2 === 0) console.log(`[ntfy] poll #${pollCount}`);
+        const url = `${this.topicUrl}/json?poll=1&since=30s`;
         const res = await fetch(url, {
           headers: this.authHeaders(),
-          signal: this.abortController.signal,
+          signal,
         });
 
         if (res.ok) {
           const text = await res.text();
           for (const line of text.split('\n').filter(Boolean)) {
             try {
-              const msg = JSON.parse(line) as { id?: string; time?: number; event?: string; message?: string };
+              const msg = JSON.parse(line) as { id?: string; event?: string; message?: string };
               if (msg.event !== 'message' || !msg.message) continue;
-
-              // Advance the cursor past this message
-              if (msg.time && msg.time >= this.lastPollTime) {
-                this.lastPollTime = msg.time + 1;
-              }
-
-              // Skip already-seen messages
               if (msg.id && this.processedIds.has(msg.id)) continue;
               if (msg.id) this.processedIds.add(msg.id);
-
-              // Skip messages that look like our notifications
-              if (/^#\d+ .+\n\nReply:/.test(msg.message)) continue;
+              if (/^#\d+ .+\n\nReply[ :]/.test(msg.message)) continue;
 
               console.log(`[ntfy] received response: "${msg.message}"`);
-              onResponse(msg.message);
+              try {
+                await Promise.resolve(onResponse(msg.message));
+              } catch (cbErr) {
+                console.error('[ntfy] callback error:', cbErr);
+              }
             } catch {
-              // skip malformed lines
+              // skip malformed line
             }
           }
         }
       } catch (err) {
-        if (this.abortController?.signal.aborted) return;
+        if (signal.aborted) return;
         console.error('[ntfy] poll error:', err);
       }
 
-      await this.sleep(5000);
+      // Simple sleep that resolves on abort instead of rejecting
+      if (signal.aborted) return;
+      await new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, 5000);
+        signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+      });
     }
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, ms);
-      this.abortController?.signal.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new Error('aborted'));
-      }, { once: true });
-    });
   }
 
   stopListening(): void {

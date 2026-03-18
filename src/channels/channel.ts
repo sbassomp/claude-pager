@@ -11,7 +11,7 @@ export interface ChannelProvider {
 
   send(event: RelayEvent, shortId: string): Promise<NotificationResult>;
 
-  startListening(onResponse: (rawText: string) => void): void;
+  startListening(onResponse: (rawText: string) => void | Promise<void>): void;
 
   stopListening(): void;
 }

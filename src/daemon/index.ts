@@ -4,6 +4,8 @@ import { loadConfig, getDataDir, ensureDataDir } from '../config/index.js';
 import { createChannel } from '../channels/factory.js';
 import { createInjector } from '../injectors/factory.js';
 import { createServer } from './server.js';
+import { resolveResponse, removePending } from '../sessions/events.js';
+import { getSession } from '../sessions/tracker.js';
 
 const PID_FILE = () => join(getDataDir(), 'daemon.pid');
 
@@ -39,12 +41,45 @@ export async function startDaemon(): Promise<void> {
   writeFileSync(PID_FILE(), String(process.pid));
 
   // Start polling for responses from the channel
-  channel.startListening((rawText) => {
-    fetch(`http://127.0.0.1:${config.port}/api/v1/respond`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: rawText }),
-    }).catch(err => console.error('[daemon] Failed to forward response:', err));
+  channel.startListening(async (rawText) => {
+    console.log(`[daemon] Received response from channel: "${rawText}"`);
+    try {
+      const resolved = resolveResponse(rawText);
+      if (!resolved) {
+        console.log('[daemon] No pending question to match');
+        return;
+      }
+
+      const { question, response } = resolved;
+      console.log(`[daemon] Matched to #${question.shortId} (${question.event.type}), injecting: "${response}"`);
+
+      const session = getSession(question.event.sessionId);
+      if (!session) {
+        console.log('[daemon] Session no longer active');
+        removePending(question.event.id);
+        return;
+      }
+
+      let windowId = session.windowId;
+      if (!windowId) {
+        windowId = await injector.findWindow(session.pid) ?? undefined;
+      }
+      if (!windowId) {
+        console.log(`[daemon] Could not find window for PID ${session.pid}`);
+        return;
+      }
+
+      const typed = await injector.typeText(windowId, response);
+      if (typed) {
+        await injector.pressEnter(windowId);
+        removePending(question.event.id);
+        console.log(`[daemon] Injected "${response}" into window ${windowId}`);
+      } else {
+        console.log(`[daemon] Failed to type into window ${windowId}`);
+      }
+    } catch (err) {
+      console.error('[daemon] Error handling response:', err);
+    }
   });
 
   // Graceful shutdown

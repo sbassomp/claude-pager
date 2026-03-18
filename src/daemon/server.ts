@@ -52,22 +52,27 @@ export async function createServer(deps: DaemonDeps) {
   });
 
   // Receive events from hooks
-  app.post<{ Body: { session_id?: string; type?: string; message?: string } }>(
+  // Claude Code sends: { session_id, notification_type, message, title, cwd, ... }
+  app.post<{ Body: Record<string, string> }>(
     '/api/v1/events',
     async (request, reply) => {
       const body = request.body;
-      if (!body || !body.session_id || !body.type || !body.message) {
-        return reply.status(400).send({ error: 'Missing required fields: session_id, type, message' });
+      const sessionId = body?.session_id;
+      const type = body?.notification_type || body?.type;
+      const message = body?.message;
+
+      if (!sessionId || !type || !message) {
+        return reply.status(400).send({ error: 'Missing required fields: session_id, notification_type/type, message' });
       }
 
-      const session = getSession(body.session_id);
-      const project = session?.cwd || 'unknown';
+      const session = getSession(sessionId);
+      const project = body.cwd || session?.cwd || 'unknown';
 
       const event: RelayEvent = {
         id: randomUUID(),
-        sessionId: body.session_id,
-        type: body.type as RelayEvent['type'],
-        message: body.message,
+        sessionId,
+        type: type as RelayEvent['type'],
+        message: body.title ? `${body.title}: ${message}` : message,
         project,
         timestamp: Date.now(),
       };
