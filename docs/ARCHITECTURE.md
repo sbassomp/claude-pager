@@ -1,123 +1,124 @@
 # Architecture
 
-## Vue d'ensemble
+## Overview
 
-claude-relay est un daemon léger qui sert de pont entre les instances Claude Code locales et l'utilisateur distant via des canaux de notification.
+claude-relay is a lightweight daemon that bridges local Claude Code instances to the remote user via notification channels.
 
-## Composants principaux
+## Main components
 
-### 1. Hooks Claude Code
+### 1. Claude Code Hooks
 
-Scripts shell minimalistes installés dans `~/.claude/settings.json`. Deux hooks :
+Minimalist shell scripts installed in `~/.claude/settings.json`. Two hooks:
 
-- **SessionStart** : enregistre le mapping `session_id → PID → terminal window`
-- **Notification** : détecte `permission_prompt` et `idle_prompt`, envoie l'événement au daemon
+- **SessionStart**: registers the mapping `session_id → PID → terminal window`
+- **Notification**: detects `permission_prompt` and `idle_prompt`, sends the event to the daemon
 
-Les hooks sont des fire-and-forget : ils postent le JSON sur l'API locale du daemon et sortent immédiatement (timeout hook = 5s).
+Hooks are fire-and-forget: they POST JSON to the daemon's local API and exit immediately (hook timeout = 5s).
 
-### 2. Daemon HTTP (`src/daemon.ts` + `src/server.ts`)
+### 2. HTTP Daemon (`src/daemon/`)
 
-API locale sur `127.0.0.1:17380` :
+Local API on `127.0.0.1:17380`:
 
-| Endpoint | Méthode | Rôle |
-|----------|---------|------|
-| `/api/v1/events` | POST | Reçoit les événements des hooks |
-| `/api/v1/respond` | POST | Reçoit les réponses utilisateur (callback ntfy, Matrix, etc.) |
-| `/api/v1/pending` | GET | Liste les questions en attente |
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/events` | POST | Receive events from hooks |
+| `/api/v1/respond` | POST | Receive user responses (from channel polling) |
+| `/api/v1/pending` | GET | List pending questions |
+| `/api/v1/sessions` | GET | List active sessions |
 | `/api/v1/health` | GET | Health check |
 
-Le daemon maintient l'état des sessions actives et des questions en attente. Il gère le cycle de vie complet : réception événement → enrichissement → dispatch notification → réception réponse → injection terminal.
+The daemon manages active sessions and pending questions. It handles the full lifecycle: receive event → enrich → dispatch notification → receive response → inject into terminal.
 
 ### 3. Channels (Strategy Pattern)
 
-Interface `ChannelProvider` avec implémentations pluggables :
+`ChannelProvider` interface with pluggable implementations:
 
 ```
 channels/
-├── channel.ts           # Interface commune
-├── factory.ts           # Sélection du provider depuis la config
-├── ntfy/                # ntfy.sh / self-hosted (MVP)
-├── matrix/              # Matrix protocol (Phase 2)
-└── webhook/             # Generic webhook (Phase 2)
+├── channel.ts           # Common interface
+├── factory.ts           # Provider selection from config
+├── ntfy/                # ntfy.sh / self-hosted
+└── telegram/            # Telegram Bot API
 ```
 
-Chaque channel sait :
-- Envoyer une notification enrichie (projet, contexte, question)
-- Gérer le callback de réponse (boutons HTTP, reply message, etc.)
+Each channel can:
+- Send an enriched notification (project, context, question)
+- Handle the response callback (inline buttons, reply messages, etc.)
 
 ### 4. Injectors (Strategy Pattern)
 
-Interface `InputInjector` avec implémentations par plateforme :
+`InputInjector` interface with per-platform implementations:
 
 ```
 injectors/
-├── injector.ts              # Interface commune
-├── factory.ts               # Sélection par plateforme
-├── xdotool/                 # Linux X11 (MVP)
-└── applescript/             # macOS (Phase 2)
+├── injector.ts              # Common interface
+├── factory.ts               # Platform-based selection
+├── tmux/                    # tmux send-keys (Linux, preferred)
+└── xdotool/                 # X11 window injection (Linux)
 ```
 
-Chaque injector sait :
-- Trouver la fenêtre terminal associée à un session_id
-- Taper du texte dans cette fenêtre
-- Envoyer des touches (Enter, y/n)
+Each injector can:
+- Find the terminal window associated with a session_id
+- Type text into that window
+- Send keystrokes (Enter, y/n)
 
 ### 5. Session Tracker
 
-Mapping entre les sessions Claude Code et les fenêtres terminal :
+Mapping between Claude Code sessions and terminal windows:
 
-- Le hook SessionStart écrit `~/.claude-relay/sessions/<session_id>.json` avec `{ pid, tty, cwd, timestamp }`
-- Le tracker utilise le PID pour retrouver la fenêtre via `xdotool search --pid`
-- Nettoyage automatique des sessions mortes
+- The SessionStart hook writes `~/.claude-relay/sessions/<session_id>.json` with `{ pid, tty, cwd, tmuxPane, timestamp }`
+- The tracker uses the tmux pane or PID to find the target window
+- Dead sessions are automatically cleaned up
 
-## Flux complet
+## Full flow
 
 ```
-1. Claude Code instance demande une permission
+1. A Claude Code instance requests a permission
    │
-2. Hook Notification fire → POST JSON vers daemon :17380/api/v1/events
+2. Notification hook fires → POST JSON to daemon :17380/api/v1/events
    │
-3. Daemon enrichit l'événement :
-   - Retrouve le session_id dans le tracker
-   - Identifie le projet (cwd)
-   - Formate un message humain lisible
+3. Daemon enriches the event:
+   - Looks up the session_id in the tracker
+   - Identifies the project (cwd)
+   - Formats a human-readable message
    │
-4. Daemon dispatch vers le ChannelProvider configuré (ntfy)
-   - ntfy: POST avec titre, message, action buttons (Allow/Deny/Reply)
+4. Daemon dispatches to the configured ChannelProvider
+   - Telegram: HTML message with inline keyboard (Allow/Deny)
+   - ntfy: push notification with tags and priority
    │
-5. Utilisateur reçoit la notification sur son téléphone
-   - Tape "Allow" ou une réponse custom
+5. User receives the notification on their phone
+   - Taps a button, types a reply, or sends a voice message
    │
-6. Callback arrive sur /api/v1/respond
+6. Response arrives via channel polling
    │
-7. Daemon route la réponse vers l'InputInjector
-   - xdotool active la fenêtre, tape la réponse, appuie sur Enter
+7. Daemon routes the response to the InputInjector
+   - tmux: send-keys to the correct pane
+   - xdotool: activate window, type response, press Enter
    │
-8. Claude Code reçoit l'input et continue
+8. Claude Code receives the input and continues
 ```
 
 ## Configuration
 
-Fichier `~/.claude-relay/config.json` :
+File `~/.claude-relay/config.json`:
 
 ```json
 {
   "port": 17380,
   "channel": {
-    "type": "ntfy",
-    "ntfy": {
-      "server": "https://ntfy.sh",
-      "topic": "claude-relay-<random>",
-      "token": "tk_..."
+    "type": "telegram",
+    "telegram": {
+      "botToken": "123456:ABC...",
+      "chatId": 12345678
     }
   },
   "injector": "auto"
 }
 ```
 
-## Sécurité
+## Security
 
-- L'API HTTP ne bind que sur `127.0.0.1` (pas d'accès réseau)
-- Le topic ntfy doit utiliser un token d'authentification
-- Les réponses injectées sont validées (provenance du canal authentifié)
-- Aucune donnée de code n'est envoyée dans les notifications (seulement le type de question et le contexte minimal)
+- HTTP API binds to `127.0.0.1` only (no network exposure)
+- ntfy topic must use token authentication
+- Input validation with Fastify JSON Schema + custom validators
+- No code content is sent in notifications (only question type and minimal context)

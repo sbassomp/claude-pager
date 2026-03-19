@@ -1,48 +1,46 @@
-# Channel ntfy
+# Channel: ntfy
 
-## Pourquoi ntfy ?
+## Why ntfy?
 
-ntfy est le canal MVP pour claude-relay :
+ntfy is one of the supported notification channels for claude-relay:
 
-- **Self-hostable** : pas de dépendance à un service tiers
-- **Action buttons** : supporte des boutons avec callbacks HTTP (Allow/Deny/Reply)
-- **Apps mobile** : Android (F-Droid, Play Store) et iOS
-- **Zéro compte requis** : fonctionne avec un simple topic (ou token pour l'auth)
-- **API simple** : un POST pour envoyer, un callback pour recevoir
+- **Self-hostable**: no dependency on a third-party service
+- **Action buttons**: supports buttons with HTTP callbacks (Allow/Deny/Reply)
+- **Mobile apps**: Android (F-Droid, Play Store) and iOS
+- **Zero account required**: works with a simple topic (or token for auth)
+- **Simple API**: one POST to send, polling to receive
 
-## Format de notification
+## Notification format
 
 ```bash
 curl -X POST https://ntfy.example.com/claude-relay \
-  -H "Title: Claude Code — medcorp" \
+  -H "Title: Claude Code — myproject" \
   -H "Priority: high" \
   -H "Tags: robot,question" \
-  -H "Actions: http, Allow, https://relay.local:17380/api/v1/respond, body='{\"event_id\":\"xxx\",\"response\":\"allow\"}'; \
-               http, Deny, https://relay.local:17380/api/v1/respond, body='{\"event_id\":\"xxx\",\"response\":\"deny\"}'" \
-  -d "Permission demandée : Bash(git push origin main)"
+  -d "#42 Permission requested: Bash(git push origin main)"
 ```
 
-## Problème : callback vers localhost
+## Problem: callbacks to localhost
 
-Les action buttons ntfy envoient des requêtes HTTP depuis le **téléphone** (ou le serveur ntfy). Ils ne peuvent pas atteindre `127.0.0.1:17380` directement.
+ntfy action buttons send HTTP requests from the **phone** (or the ntfy server). They cannot reach `127.0.0.1:17380` directly.
 
-### Solutions possibles
+### Possible solutions
 
-1. **Tunnel reverse** : exposer le daemon via un tunnel (cloudflared, ngrok, bore)
-2. **ntfy + polling** : au lieu de callbacks, le daemon poll le topic ntfy pour les réponses
-3. **Serveur intermédiaire** : un petit endpoint public qui relaie les réponses
-4. **VPN** : si le téléphone est sur le même VPN que la machine
+1. **Reverse tunnel**: expose the daemon via a tunnel (cloudflared, ngrok, bore)
+2. **ntfy + polling**: instead of callbacks, the daemon polls the ntfy topic for responses
+3. **Intermediate server**: a small public endpoint that relays responses
+4. **VPN**: if the phone is on the same VPN as the machine
 
-### Solution recommandée : polling du topic ntfy
+### Recommended solution: topic polling
 
-Le plus simple et le plus sécurisé. L'utilisateur **répond au message ntfy** (fonctionnalité native de l'app). Le daemon poll le topic avec un filtre sur les réponses :
+The simplest and most secure approach. The user **replies to the ntfy message** (native app feature). The daemon polls the topic with a filter on responses:
 
 ```bash
-# Le daemon subscribe au topic en SSE
-curl -s "https://ntfy.example.com/claude-relay/sse?poll=1&since=10m"
+# The daemon subscribes to the topic via polling
+curl -s "https://ntfy.example.com/claude-relay/json?poll=1&since=30s"
 ```
 
-Pas besoin d'exposer le daemon sur Internet. Pas de tunnel. Juste du polling sur le topic ntfy existant.
+No need to expose the daemon to the internet. No tunnel. Just polling on the existing ntfy topic.
 
 ## Configuration
 
@@ -59,8 +57,8 @@ Pas besoin d'exposer le daemon sur Internet. Pas de tunnel. Juste du polling sur
 }
 ```
 
-## Prérequis
+## Prerequisites
 
-- Instance ntfy fonctionnelle (self-hosted ou ntfy.sh)
-- App ntfy installée sur le téléphone
-- Topic configuré avec authentification (recommandé)
+- A working ntfy instance (self-hosted or ntfy.sh)
+- ntfy app installed on your phone
+- Topic configured with authentication (recommended)

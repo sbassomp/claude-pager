@@ -1,206 +1,206 @@
-# Audit de conformite - claude-relay
+# Conformity Audit - claude-relay
 
-**Date** : 2026-03-19 (v2)
-**Projet** : claude-relay v0.1.0
-**Langage** : TypeScript (Node.js >= 20)
-**Framework** : Fastify 5, Commander 13
-**Auditeur** : Audit automatise
-
----
-
-## Note globale : 84/100
-
-| Categorie | Score | Detail |
-|-----------|-------|--------|
-| Code (SOLID, structure, lisibilite) | 87/100 | Architecture Strategy+Factory solide, SRP respecte, utils extraits, handlers separes |
-| Securite | 78/100 | Validation entrees, execFileSync, safeJsonParse, caps memoire. Reste quelques catches best-effort |
-| Tests | 75/100 | 36 tests, 7 fichiers, couverture des utils/events/server. Manque injectors, hooks, voice |
+**Date**: 2026-03-19 (v2)
+**Project**: claude-relay v0.1.0
+**Language**: TypeScript (Node.js >= 20)
+**Framework**: Fastify 5, Commander 13
+**Auditor**: Automated audit
 
 ---
 
-## Metriques du projet
+## Overall Score: 84/100
 
-| Metrique | Valeur |
-|----------|--------|
-| Fichiers source (.ts) | 25 (hors tests) |
-| Fichiers de test | 7 |
-| Lignes de code total | 2 190 |
-| Lignes de test | 400 |
-| Ratio test/code | ~18% |
-| Build | OK (zero erreur) |
+| Category | Score | Detail |
+|----------|-------|--------|
+| Code (SOLID, structure, readability) | 87/100 | Solid Strategy+Factory architecture, SRP respected, extracted utils, separated handlers |
+| Security | 78/100 | Input validation, execFileSync, safeJsonParse, memory caps. Some best-effort catches remain |
+| Tests | 75/100 | 36 tests, 7 files, coverage of utils/events/server. Missing injectors, hooks, voice |
+
+---
+
+## Project Metrics
+
+| Metric | Value |
+|--------|-------|
+| Source files (.ts) | 25 (excluding tests) |
+| Test files | 7 |
+| Total lines of code | 2,190 |
+| Test lines | 400 |
+| Test/code ratio | ~18% |
+| Build | OK (zero errors) |
 | Tests | 36/36 pass |
-| Lint (ESLint + typescript-eslint) | 0 erreur |
-| npm audit | 0 vulnerabilite |
+| Lint (ESLint + typescript-eslint) | 0 errors |
+| npm audit | 0 vulnerabilities |
 
 ---
 
-## Resume des violations
+## Violation Summary
 
-| Priorite | Nombre |
-|----------|--------|
-| Critique | 0 |
+| Priority | Count |
+|----------|-------|
+| Critical | 0 |
 | Important | 3 |
-| Mineur | 5 |
+| Minor | 5 |
 
 ---
 
-## Violations importantes (3)
+## Important Violations (3)
 
-### IMP-01. TelegramProvider reste > 400 lignes
+### IMP-01. TelegramProvider exceeds 400 lines
 
-**Fichier** : `src/channels/telegram/provider.ts` (421 lignes)
-**Regle** : Taille et complexite — fichiers < 500, classes < 300
-**Probleme** : La classe TelegramProvider fait 393 lignes (29-421). L'extraction de `escapeHtml`/`markdownToHtml` dans utils est faite, mais `handleVoice` (75 lignes) et `handleCallback` (70 lignes) alourdissent encore la classe.
-**Action** : Extraire `handleVoice` dans un module `telegram/voice-handler.ts` et la logique de construction de messages dans un `telegram/message-builder.ts`.
+**File**: `src/channels/telegram/provider.ts` (421 lines)
+**Rule**: Size and complexity — files < 500, classes < 300
+**Issue**: The TelegramProvider class spans 393 lines (29-421). `escapeHtml`/`markdownToHtml` extraction to utils is done, but `handleVoice` (75 lines) and `handleCallback` (70 lines) still bloat the class.
+**Action**: Extract `handleVoice` into a `telegram/voice-handler.ts` module and message building logic into `telegram/message-builder.ts`.
 
-### IMP-02. `cleanDeadSessions` utilise JSON.parse non protege
+### IMP-02. `cleanDeadSessions` uses unprotected JSON.parse
 
-**Fichier** : `src/sessions/tracker.ts:72`
-**Regle** : Gestion d'erreurs — pas de catch generique
-**Probleme** : `getSession` et `listSessions` utilisent `safeJsonParse` (corrige), mais `cleanDeadSessions` utilise encore `JSON.parse` directement :
+**File**: `src/sessions/tracker.ts:72`
+**Rule**: Error handling — no generic catch
+**Issue**: `getSession` and `listSessions` use `safeJsonParse` (fixed), but `cleanDeadSessions` still uses `JSON.parse` directly:
 ```typescript
 const info: SessionInfo = JSON.parse(readFileSync(path, 'utf-8'));
 ```
-**Action** : Utiliser `safeJsonParse` et ignorer les fichiers corrompus au lieu de crasher.
+**Action**: Use `safeJsonParse` and skip corrupted files instead of crashing.
 
-### IMP-03. Manque de tests pour les injectors et handlers
+### IMP-03. Missing tests for injectors and handlers
 
-**Fichier** : `src/injectors/`, `src/daemon/handlers.ts`
-**Regle** : Tests — couverture des branches conditionnelles
-**Probleme** : `TmuxInjector`, `XdotoolInjector` et `createChannelHandlers` n'ont aucun test. Ces modules contiennent de la logique de routage critique (permission_prompt vs idle_prompt, picker, fallback cwd).
-**Action** : Ajouter des tests unitaires avec des mocks pour `execFile`, tester les branches allow/deny/free text du handlers.
-
----
-
-## Violations mineures (5)
-
-### MIN-01. `handleSessionStart` utilise JSON.parse sans protection
-
-**Fichier** : `src/hooks/index.ts:97`
-**Regle** : Gestion d'erreurs
-**Probleme** : `JSON.parse(input)` sur le stdin du hook. Si Claude Code envoie du JSON malforme, le hook crash avec une stack trace.
-**Action** : Utiliser `safeJsonParse` avec un fallback et un log d'erreur propre.
-
-### MIN-02. Duplication de la logique de construction de choix de session
-
-**Fichier** : `src/daemon/handlers.ts:58-60` et `src/daemon/handlers.ts:153-155`
-**Regle** : DRY — pas de code duplique > 5 lignes
-**Probleme** : Le pattern `sessions.map(s => ({ id: s.sessionId, label: ... }))` est duplique deux fois dans `handlers.ts`.
-**Action** : Extraire une fonction `buildSessionChoices(sessions)`.
-
-### MIN-03. Magic string `__session_pick__:` sans constante
-
-**Fichier** : `src/daemon/handlers.ts:20`, `src/channels/telegram/provider.ts:235`
-**Regle** : Constantes nommees — pas de magic strings
-**Probleme** : Le protocole interne `__session_pick__:` est utilise comme convention de string dans deux fichiers sans constante partagee.
-**Action** : Definir `SESSION_PICK_PREFIX` dans `types.ts` ou `channels/channel.ts`.
-
-### MIN-04. `installHooks` utilise JSON.parse sans protection
-
-**Fichier** : `src/cli/setup.ts:252`
-**Regle** : Gestion d'erreurs
-**Probleme** : `JSON.parse(readFileSync(CLAUDE_SETTINGS_FILE, 'utf-8'))` peut crasher si le fichier settings.json est corrompu.
-**Action** : Utiliser `safeJsonParse` avec fallback `{}`.
-
-### MIN-05. Parametres unused dans l'interface DaemonDeps
-
-**Fichier** : `src/daemon/server.ts:10-14`
-**Regle** : Code mort
-**Probleme** : L'interface `DaemonDeps` declare `config: RelayConfig` mais `config` n'est plus utilise dans `createServer` (destructure mais ignore). L'interface est encore utile pour `daemon/index.ts`, mais le type devrait refleter ce que `createServer` consomme reellement.
-**Action** : Retirer `config` de `DaemonDeps` ou creer un type `ServerDeps` sans config.
+**File**: `src/injectors/`, `src/daemon/handlers.ts`
+**Rule**: Tests — branch coverage
+**Issue**: `TmuxInjector`, `XdotoolInjector` and `createChannelHandlers` have no tests. These modules contain critical routing logic (permission_prompt vs idle_prompt, picker, cwd fallback).
+**Action**: Add unit tests with mocks for `execFile`, test allow/deny/free text branches in handlers.
 
 ---
 
-## Points positifs
+## Minor Violations (5)
+
+### MIN-01. `handleSessionStart` uses unprotected JSON.parse
+
+**File**: `src/hooks/index.ts:97`
+**Rule**: Error handling
+**Issue**: `JSON.parse(input)` on hook stdin. If Claude Code sends malformed JSON, the hook crashes with a stack trace.
+**Action**: Use `safeJsonParse` with a fallback and proper error logging.
+
+### MIN-02. Duplicated session choice building logic
+
+**File**: `src/daemon/handlers.ts:58-60` and `src/daemon/handlers.ts:153-155`
+**Rule**: DRY — no duplicated code > 5 lines
+**Issue**: The pattern `sessions.map(s => ({ id: s.sessionId, label: ... }))` is duplicated twice in `handlers.ts`.
+**Action**: Extract a `buildSessionChoices(sessions)` function.
+
+### MIN-03. Magic string `__session_pick__:` without constant
+
+**File**: `src/daemon/handlers.ts:20`, `src/channels/telegram/provider.ts:235`
+**Rule**: Named constants — no magic strings
+**Issue**: The internal protocol `__session_pick__:` is used as a string convention across two files without a shared constant.
+**Action**: Define `SESSION_PICK_PREFIX` in `types.ts` or `channels/channel.ts`.
+
+### MIN-04. `installHooks` uses unprotected JSON.parse
+
+**File**: `src/cli/setup.ts:252`
+**Rule**: Error handling
+**Issue**: `JSON.parse(readFileSync(CLAUDE_SETTINGS_FILE, 'utf-8'))` can crash if the settings.json file is corrupted.
+**Action**: Use `safeJsonParse` with fallback `{}`.
+
+### MIN-05. Unused parameter in DaemonDeps interface
+
+**File**: `src/daemon/server.ts:10-14`
+**Rule**: Dead code
+**Issue**: The `DaemonDeps` interface declares `config: RelayConfig` but `config` is no longer used in `createServer` (destructured but ignored). The interface is still useful for `daemon/index.ts`, but the type should reflect what `createServer` actually consumes.
+**Action**: Remove `config` from `DaemonDeps` or create a `ServerDeps` type without config.
+
+---
+
+## Positive Points
 
 ### Architecture & Code
-- **Strategy + Factory** : Pattern bien applique pour les channels (ntfy/telegram) et injectors (tmux/xdotool)
-- **Interfaces stables** : `ChannelProvider`, `InputInjector` definissent des contrats clairs avec des methodes optionnelles (`sendRaw?`, `sendSessionPicker?`)
-- **SRP ameliore** : Extraction de `handlers.ts` qui separe la logique de routage du lifecycle du daemon ; `daemon/index.ts` passe de 236 a 78 lignes
-- **Utils extraits** : `html.ts`, `json.ts`, `validation.ts` sont reutilisables et testes
-- **Guard clauses** : Early returns bien utilises partout (tracker, events, handlers)
-- **Fallback cwd** : Resolution intelligente session UUID → cwd quand le session_id n'est plus sur disque
-- **Nommage** : Conventions respectees (`*Provider`, `*Injector`, `*Factory`)
-- **ESLint** : typescript-eslint configure, 0 erreur
+- **Strategy + Factory**: Well-applied pattern for channels (ntfy/telegram) and injectors (tmux/xdotool)
+- **Stable interfaces**: `ChannelProvider`, `InputInjector` define clear contracts with optional methods (`sendRaw?`, `sendSessionPicker?`)
+- **Improved SRP**: Extracted `handlers.ts` separates routing logic from daemon lifecycle; `daemon/index.ts` went from 236 to 78 lines
+- **Extracted utils**: `html.ts`, `json.ts`, `validation.ts` are reusable and tested
+- **Guard clauses**: Early returns used consistently (tracker, events, handlers)
+- **Cwd fallback**: Smart session UUID → cwd resolution when the session_id is no longer on disk
+- **Naming**: Conventions respected (`*Provider`, `*Injector`, `*Factory`)
+- **ESLint**: typescript-eslint configured, 0 errors
 
-### Securite
-- **execFileSync** au lieu de execSync (cli/run.ts) — plus d'injection de commande
-- **Validation des entrees HTTP** : JSON Schema Fastify sur `/api/v1/events` et `/api/v1/respond`
-- **isValidEventType + isValidSessionId** : Validation avant traitement
-- **safeJsonParse** : Protection contre les fichiers JSON corrompus (config, sessions)
-- **Caps memoire** : `processedIds` cappe a 1000 (ntfy), maps a 500 (telegram)
-- **Bind 127.0.0.1** uniquement — pas d'exposition reseau
-- **AbortSignal.timeout** sur tous les fetch Telegram (15s)
-- **Port configurable** via `CLAUDE_RELAY_PORT` dans les hooks
+### Security
+- **execFileSync** instead of execSync (cli/run.ts) — no more command injection
+- **HTTP input validation**: Fastify JSON Schema on `/api/v1/events` and `/api/v1/respond`
+- **isValidEventType + isValidSessionId**: Validation before processing
+- **safeJsonParse**: Protection against corrupted JSON files (config, sessions)
+- **Memory caps**: `processedIds` capped at 1,000 (ntfy), maps at 500 (telegram)
+- **Bind 127.0.0.1** only — no network exposure
+- **AbortSignal.timeout** on all Telegram fetch calls (15s)
+- **Configurable port** via `CLAUDE_RELAY_PORT` in hooks
 
 ### Tests
-- **36 tests** couvrant events, server HTTP, tracker, validation, json parse, html utils
-- **Tous passants** (0 fail, 0 skip)
+- **36 tests** covering events, HTTP server, tracker, validation, json parse, html utils
+- **All passing** (0 fail, 0 skip)
 
 ---
 
-## Plan de remediation
+## Remediation Plan
 
-### Sprint 1 — Securite residuelle (prioritaire)
-1. Remplacer `JSON.parse` par `safeJsonParse` dans `cleanDeadSessions` (IMP-02)
-2. Proteger `handleSessionStart` et `installHooks` avec `safeJsonParse` (MIN-01, MIN-04)
+### Sprint 1 — Remaining security (priority)
+1. Replace `JSON.parse` with `safeJsonParse` in `cleanDeadSessions` (IMP-02)
+2. Protect `handleSessionStart` and `installHooks` with `safeJsonParse` (MIN-01, MIN-04)
 
-### Sprint 2 — Tests manquants (prioritaire)
-1. Tests unitaires `TmuxInjector` avec mock `execFile` (IMP-03)
-2. Tests `createChannelHandlers` : routage allow/deny, fallback cwd, picker (IMP-03)
-3. Test d'integration hooks (envoi sur stdin, verification session cree) (IMP-03)
+### Sprint 2 — Missing tests (priority)
+1. Unit tests for `TmuxInjector` with `execFile` mock (IMP-03)
+2. Tests for `createChannelHandlers`: allow/deny routing, cwd fallback, picker (IMP-03)
+3. Integration test for hooks (stdin input, verify session created) (IMP-03)
 
-### Sprint 3 — Refactoring TelegramProvider (amelioration)
-1. Extraire `handleVoice` dans `telegram/voice-handler.ts` (IMP-01)
-2. Extraire la constante `SESSION_PICK_PREFIX` (MIN-03)
-3. Extraire `buildSessionChoices()` dans handlers (MIN-02)
-4. Retirer `config` de `DaemonDeps` dans server.ts (MIN-05)
+### Sprint 3 — TelegramProvider refactoring (improvement)
+1. Extract `handleVoice` into `telegram/voice-handler.ts` (IMP-01)
+2. Extract `SESSION_PICK_PREFIX` constant (MIN-03)
+3. Extract `buildSessionChoices()` in handlers (MIN-02)
+4. Remove `config` from `DaemonDeps` in server.ts (MIN-05)
 
 ---
 
-## Corrections appliquees (historique)
+## Applied Fixes (history)
 
 ### Session 2026-03-19 (v1 → v2)
 
-**Corrections critiques** :
-- CRIT-01 : `execSync(claudeCmd)` → `execFileSync('claude', args)` dans cli/run.ts
-- CRIT-02 : Validation type d'event avec `isValidEventType()` dans daemon/server.ts
-- CRIT-03 : `JSON.parse` → `safeJsonParse` dans tracker.ts et config/index.ts
-- CRIT-04 : Cap memoire processedIds (1000) et messageToEvent/messageToSession (500)
+**Critical fixes**:
+- CRIT-01: `execSync(claudeCmd)` → `execFileSync('claude', args)` in cli/run.ts
+- CRIT-02: Event type validation with `isValidEventType()` in daemon/server.ts
+- CRIT-03: `JSON.parse` → `safeJsonParse` in tracker.ts and config/index.ts
+- CRIT-04: Memory cap on processedIds (1,000) and messageToEvent/messageToSession (500)
 
-**Corrections importantes** :
-- IMP-01 : `escapeHtml`/`markdownToHtml` extraits dans utils/html.ts, imports dans TelegramProvider
-- IMP-02 : `createChannelHandlers()` extrait dans daemon/handlers.ts (SRP)
-- IMP-03 : `sendSessionPicker?` ajoute a l'interface ChannelProvider, suppression instanceof
-- IMP-04 : JSON Schema Fastify sur /events et /respond
-- IMP-05 : ESLint avec typescript-eslint configure, 0 erreur
-- IMP-06 : Import unused `randomUUID` supprime de recover.ts
-- IMP-07 : Validation sessionId avec `isValidSessionId()` dans tracker
-- IMP-08 : Logique de routage + picker extraite dans handlers.ts
+**Important fixes**:
+- IMP-01: `escapeHtml`/`markdownToHtml` extracted to utils/html.ts, imported in TelegramProvider
+- IMP-02: `createChannelHandlers()` extracted to daemon/handlers.ts (SRP)
+- IMP-03: `sendSessionPicker?` added to ChannelProvider interface, removed instanceof
+- IMP-04: Fastify JSON Schema on /events and /respond
+- IMP-05: ESLint with typescript-eslint configured, 0 errors
+- IMP-06: Unused `randomUUID` import removed from recover.ts
+- IMP-07: sessionId validation with `isValidSessionId()` in tracker
+- IMP-08: Routing + picker logic extracted to handlers.ts
 
-**Corrections mineures** :
-- MIN-01 : console.debug dans les catches importants (ntfy)
-- MIN-03 : Port configurable via `CLAUDE_RELAY_PORT`
-- MIN-04 : Seed `nextShortId` avec `Date.now() % 10000`
-- MIN-05 : Timeouts fetch (15s) sur tous les appels Telegram
-- MIN-06 : daemon/index.ts simplifie (236 → 78 lignes)
-- MIN-07 : Version CLI lue depuis package.json
-- MIN-08 : `throw Error` au lieu de `process.exit()` dans setup.ts
+**Minor fixes**:
+- MIN-01: console.debug in important catch blocks (ntfy)
+- MIN-03: Configurable port via `CLAUDE_RELAY_PORT`
+- MIN-04: Seed `nextShortId` with `Date.now() % 10000`
+- MIN-05: Fetch timeouts (15s) on all Telegram calls
+- MIN-06: daemon/index.ts simplified (236 → 78 lines)
+- MIN-07: CLI version read from package.json
+- MIN-08: `throw Error` instead of `process.exit()` in setup.ts
 
-**Nouveaux fichiers** :
+**New files**:
 - `src/utils/html.ts`, `src/utils/json.ts`, `src/utils/validation.ts`
 - `src/daemon/handlers.ts`
 - `eslint.config.mjs`
-- 3 fichiers de test pour les utils (16 tests supplementaires)
+- 3 test files for utils (16 additional tests)
 
-**Correction post-audit** :
-- Fallback par cwd dans handlers.ts et server.ts quand session UUID non trouve sur disque
+**Post-audit fix**:
+- Cwd fallback in handlers.ts and server.ts when session UUID not found on disk
 
 ---
 
-## Historique des audits
+## Audit History
 
-| Date | Code | Securite | Tests | Moyenne | Evolution |
-|------|------|----------|-------|---------|-----------|
-| 2026-03-19 v1 | 68/100 | 45/100 | 55/100 | 62/100 | Audit initial |
-| 2026-03-19 v2 | 87/100 | 78/100 | 75/100 | 84/100 | +22 pts — 4 critiques resolues, 8 importants resolus, ESLint, +16 tests |
+| Date | Code | Security | Tests | Average | Notes |
+|------|------|----------|-------|---------|-------|
+| 2026-03-19 v1 | 68/100 | 45/100 | 55/100 | 62/100 | Initial audit |
+| 2026-03-19 v2 | 87/100 | 78/100 | 75/100 | 84/100 | +22 pts — 4 critical resolved, 8 important resolved, ESLint, +16 tests |

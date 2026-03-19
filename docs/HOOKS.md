@@ -1,14 +1,14 @@
-# Hooks Claude Code
+# Claude Code Hooks
 
-## Principe
+## Overview
 
-Claude Code supporte un système de hooks configurés dans `~/.claude/settings.json`. Les hooks sont des commandes shell exécutées en réponse à des événements du cycle de vie d'une session.
+Claude Code supports a hook system configured in `~/.claude/settings.json`. Hooks are shell commands executed in response to session lifecycle events.
 
-## Hooks utilisés par claude-relay
+## Hooks used by claude-relay
 
 ### SessionStart
 
-Déclenché au démarrage de chaque session Claude Code. Enregistre le mapping session → terminal.
+Triggered when a Claude Code session starts. Registers the session → terminal mapping.
 
 ```json
 {
@@ -29,7 +29,7 @@ Déclenché au démarrage de chaque session Claude Code. Enregistre le mapping s
 }
 ```
 
-Le hook reçoit sur stdin :
+The hook receives on stdin:
 ```json
 {
   "session_id": "abc-123",
@@ -37,20 +37,21 @@ Le hook reçoit sur stdin :
 }
 ```
 
-Il écrit dans `~/.claude-relay/sessions/<session_id>.json` :
+It writes to `~/.claude-relay/sessions/<session_id>.json`:
 ```json
 {
-  "session_id": "abc-123",
+  "sessionId": "abc-123",
   "pid": 12345,
   "tty": "/dev/pts/3",
   "cwd": "/home/user/dev/myproject",
+  "tmuxPane": "%0",
   "timestamp": 1710000000
 }
 ```
 
 ### Notification
 
-Déclenché quand Claude Code a besoin d'une interaction utilisateur.
+Triggered when Claude Code needs user interaction.
 
 ```json
 {
@@ -71,20 +72,15 @@ Déclenché quand Claude Code a besoin d'une interaction utilisateur.
 }
 ```
 
-Le hook reçoit sur stdin le JSON de l'événement et le poste au daemon :
-```bash
-curl -s -X POST http://127.0.0.1:17380/api/v1/events \
-  -H "Content-Type: application/json" \
-  -d @- < /dev/stdin
-```
+The hook receives the event JSON on stdin, enriches it with tool context from the transcript, and forwards it to the daemon.
 
-## Types d'événements Notification
+## Notification event types
 
-| Type | Description | Action attendue |
+| Type | Description | Expected action |
 |------|-------------|-----------------|
-| `permission_prompt` | Claude demande la permission d'exécuter un outil | Allow / Deny |
-| `idle_prompt` | Claude attend un input depuis > 60s | Réponse libre |
+| `permission_prompt` | Claude requests permission to run a tool | Allow / Deny |
+| `idle_prompt` | Claude is waiting for user input (idle > 60s) | Free-text response |
 
-## Installation des hooks
+## Hook installation
 
-La commande `claude-relay setup` modifie automatiquement `~/.claude/settings.json` pour ajouter ces hooks. Elle préserve les hooks existants.
+The `claude-relay setup` command automatically modifies `~/.claude/settings.json` to add these hooks. It preserves any existing hooks.

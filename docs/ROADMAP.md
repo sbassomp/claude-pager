@@ -2,36 +2,36 @@
 
 ## Phase 1 — MVP
 
-Objectif : notification et réponse fonctionnelles sur Linux avec ntfy.
+Goal: working notification and response relay on Linux.
 
-- [ ] Daemon HTTP (start/stop/status, PID file, signal handling)
-- [ ] Hook Notification (détection permission_prompt, idle_prompt)
-- [ ] Hook SessionStart (mapping session → terminal)
-- [ ] Session Tracker (PID → window ID via xdotool)
-- [ ] Channel ntfy (notification avec action buttons Allow/Deny/Reply)
-- [ ] Injector xdotool (type + keypress dans le bon terminal)
-- [ ] CLI : `claude-relay setup`, `start`, `stop`, `status`, `pending`
-- [ ] Service systemd user pour auto-start
-- [ ] Package npm publiable
+- [x] HTTP daemon (start/stop/status, PID file, signal handling)
+- [x] Notification hook (detect permission_prompt, idle_prompt)
+- [x] SessionStart hook (session → terminal mapping)
+- [x] Session tracker (PID/tmux pane → window)
+- [x] Channel ntfy (push notification with priority and tags)
+- [x] Channel Telegram (inline keyboards, reply routing, voice transcription)
+- [x] Injector tmux (send-keys to the correct pane)
+- [x] Injector xdotool (type + keypress in the right terminal)
+- [x] CLI: `claude-relay setup`, `start`, `stop`, `status`, `pending`, `recover`
+- [x] Systemd user service for auto-start
+- [ ] Publish npm package
 
-## Phase 2 — Messaging & Voice
+## Phase 2 — Messaging & Platform support
 
-Objectif : canaux de communication riches et support vocal.
+Goal: rich communication channels and cross-platform support.
 
-- [ ] Channel Matrix (envoi + réception de messages)
+- [ ] Channel Matrix (send + receive messages)
 - [ ] Bridge WhatsApp via mautrix-whatsapp
 - [ ] Bridge Signal via mautrix-signal
-- [ ] Voice bridge : transcription des messages vocaux via faster-whisper
-- [ ] Support macOS (AppleScript injector)
-- [ ] Channel webhook générique (Slack, Discord)
+- [ ] macOS support (AppleScript injector)
+- [ ] Generic webhook channel (Slack, Discord)
 
 ## Phase 3 — Intelligence
 
-Objectif : réduire le bruit, automatiser les décisions simples.
+Goal: reduce noise, automate simple decisions.
 
-- [ ] Auto-approve rules (patterns de commandes toujours autorisées)
-- [ ] Contexte enrichi dans les notifications (dernières lignes de conversation)
-- [ ] Web dashboard pour les questions en attente
-- [ ] Support multi-machine (relay events depuis des machines distantes)
-- [ ] Support Wayland (ydotool/wtype)
-- [ ] Distribution comme plugin Claude Code (marketplace)
+- [ ] Auto-approve rules (patterns for always-allowed commands)
+- [ ] Web dashboard for pending questions
+- [ ] Multi-machine support (relay events from remote machines)
+- [ ] Wayland support (ydotool/wtype)
+- [ ] Distribution as a Claude Code plugin (marketplace)
