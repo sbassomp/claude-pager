@@ -71,8 +71,25 @@ Point to your ntfy server (self-hosted or `https://ntfy.sh`) with a topic and op
 claude-relay start
 
 # As a systemd user service (recommended)
-cp systemd/claude-relay.service ~/.config/systemd/user/
-# Edit ExecStart paths to match your node installation
+cat > ~/.config/systemd/user/claude-relay.service << 'EOF'
+[Unit]
+Description=Claude Code Relay Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/claude-relay start
+ExecStop=%h/.local/bin/claude-relay stop
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target
+EOF
+# If claude-relay is installed via nvm, adjust ExecStart path:
+#   ExecStart=/home/you/.nvm/versions/node/v22.x.x/bin/claude-relay start
 systemctl --user daemon-reload
 systemctl --user enable --now claude-relay
 ```
