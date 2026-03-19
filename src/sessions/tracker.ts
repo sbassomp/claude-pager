@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, readdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { getDataDir, ensureDataDir } from '../config/index.js';
 import type { SessionInfo } from '../types.js';
 
@@ -36,6 +37,23 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
+function isTmuxPaneAlive(pane: string): boolean {
+  try {
+    execFileSync('tmux', ['has-session', '-t', pane], { timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSessionAlive(info: SessionInfo): boolean {
+  // If we have a tmux pane, check that instead of the PID
+  if (info.tmuxPane) {
+    return isTmuxPaneAlive(info.tmuxPane);
+  }
+  return isProcessAlive(info.pid);
+}
+
 export function cleanDeadSessions(): number {
   let cleaned = 0;
   const dir = sessionsDir();
@@ -44,7 +62,7 @@ export function cleanDeadSessions(): number {
   for (const file of readdirSync(dir).filter(f => f.endsWith('.json'))) {
     const path = join(dir, file);
     const info: SessionInfo = JSON.parse(readFileSync(path, 'utf-8'));
-    if (!isProcessAlive(info.pid)) {
+    if (!isSessionAlive(info)) {
       unlinkSync(path);
       cleaned++;
     }

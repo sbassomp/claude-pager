@@ -1,5 +1,6 @@
 import type { ChannelProvider, ChannelListeners, NotificationResult, FreeMessage } from '../channel.js';
 import type { TelegramConfig, RelayEvent } from '../../types.js';
+import { downloadTelegramVoice, transcribeAudio, cleanupFile } from '../../voice/transcribe.js';
 
 interface TelegramResponse {
   ok: boolean;
@@ -17,6 +18,7 @@ interface TelegramUpdate {
   message?: {
     message_id: number;
     text?: string;
+    voice?: { file_id: string; duration: number };
     reply_to_message?: { message_id: number };
   };
 }
@@ -165,6 +167,8 @@ export class TelegramProvider implements ChannelProvider {
 
           if (update.callback_query) {
             await this.handleCallback(update.callback_query, listeners);
+          } else if (update.message?.voice) {
+            await this.handleVoice(update.message, listeners);
           } else if (update.message?.text) {
             if (update.message.reply_to_message) {
               await this.handleReply(update.message, listeners);
@@ -203,10 +207,7 @@ export class TelegramProvider implements ChannelProvider {
     if (!id) return;
 
     // Session picker callback
-    if (action === 'session' && this.pendingFreeMessage) {
-      const { text, resolve } = this.pendingFreeMessage;
-      this.pendingFreeMessage = undefined;
-      // Update picker message
+    if (action === 'session') {
       if (cb.message) {
         try {
           await fetch(this.apiUrl('editMessageText'), {
@@ -220,7 +221,13 @@ export class TelegramProvider implements ChannelProvider {
           });
         } catch { /* best effort */ }
       }
-      resolve(id);
+      // Forward session pick as a special response
+      console.log(`[telegram] session picked: ${id}`);
+      try {
+        await Promise.resolve(listeners.onResponse(`__session_pick__:${id}`));
+      } catch (err) {
+        console.error('[telegram] session pick handler error:', err);
+      }
       return;
     }
 
@@ -253,7 +260,82 @@ export class TelegramProvider implements ChannelProvider {
     }
   }
 
-  private pendingFreeMessage?: { text: string; resolve: (sessionId: string) => void };
+  private async handleVoice(
+    msg: NonNullable<TelegramUpdate['message']>,
+    listeners: ChannelListeners,
+  ): Promise<void> {
+    if (!msg.voice) return;
+
+    console.log(`[telegram] voice message received (${msg.voice.duration}s)`);
+
+    // Send a "transcribing..." feedback
+    let statusMsgId: number | undefined;
+    try {
+      const res = await fetch(this.apiUrl('sendMessage'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: this.config.chatId,
+          text: '🎙️ Transcribing...',
+          reply_to_message_id: msg.message_id,
+        }),
+      });
+      const data = (await res.json()) as TelegramResponse;
+      statusMsgId = data.result?.message_id;
+    } catch { /* best effort */ }
+
+    let audioPath: string | undefined;
+    try {
+      // Download and transcribe
+      audioPath = await downloadTelegramVoice(this.config.botToken, msg.voice.file_id);
+      const result = await transcribeAudio(audioPath, this.config.voiceLanguage || 'fr');
+      const text = result.text.trim();
+
+      console.log(`[telegram] transcribed (${result.language}): "${text}"`);
+
+      // Update status message with transcription
+      if (statusMsgId) {
+        try {
+          await fetch(this.apiUrl('editMessageText'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: this.config.chatId,
+              message_id: statusMsgId,
+              text: `🎙️ "${text}"`,
+            }),
+          });
+        } catch { /* best effort */ }
+      }
+
+      if (!text) return;
+
+      // Treat transcribed text like a regular message
+      const fakeMsg = { ...msg, text };
+      if (msg.reply_to_message) {
+        await this.handleReply(fakeMsg, listeners);
+      } else if (listeners.onFreeMessage) {
+        await this.handleFreeMessage(fakeMsg, listeners.onFreeMessage);
+      }
+    } catch (err) {
+      console.error('[telegram] voice transcription error:', err);
+      if (statusMsgId) {
+        try {
+          await fetch(this.apiUrl('editMessageText'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: this.config.chatId,
+              message_id: statusMsgId,
+              text: `❌ Transcription failed: ${err}`,
+            }),
+          });
+        } catch { /* best effort */ }
+      }
+    } finally {
+      if (audioPath) cleanupFile(audioPath);
+    }
+  }
 
   private async handleFreeMessage(
     msg: NonNullable<TelegramUpdate['message']>,
@@ -360,14 +442,6 @@ export class TelegramProvider implements ChannelProvider {
     }
 
     return result.trimEnd();
-  }
-
-  /** Wait for the user to pick a session via inline keyboard */
-  waitForSessionPick(text: string, sessions: Array<{ id: string; label: string }>): Promise<string> {
-    return new Promise((resolve) => {
-      this.pendingFreeMessage = { text, resolve };
-      this.sendSessionPicker(text, sessions);
-    });
   }
 
   stopListening(): void {

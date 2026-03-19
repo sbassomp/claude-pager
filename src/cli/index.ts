@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { startDaemon, stopDaemon, isDaemonRunning } from '../daemon/index.js';
 import { setup } from './setup.js';
 import { run } from './run.js';
+import { recover } from './recover.js';
 import { loadConfig } from '../config/index.js';
 
 const program = new Command();
@@ -80,6 +81,13 @@ program
   .option('--token <token>', 'ntfy access token')
   .action(async (options) => {
     await setup(options);
+  });
+
+program
+  .command('recover')
+  .description('Recover sessions from existing tmux panes running Claude Code')
+  .action(() => {
+    recover();
   });
 
 // Handle "run" manually to pass all remaining args to claude

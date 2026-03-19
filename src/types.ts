@@ -22,6 +22,7 @@ export interface NtfyConfig {
 export interface TelegramConfig {
   botToken: string;
   chatId: number;
+  voiceLanguage?: string;
 }
 
 export type EventType = 'permission_prompt' | 'idle_prompt';

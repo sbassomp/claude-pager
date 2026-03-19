@@ -42,39 +42,101 @@ export async function startDaemon(): Promise<void> {
   // Write PID file
   writeFileSync(PID_FILE(), String(process.pid));
 
+  // State for session picker
+  let pendingPickerText: string | undefined;
+  let pendingPickerSessions: import('../types.js').SessionInfo[] | undefined;
+
+  function escapeHtml(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   // Start polling for responses from the channel
   channel.startListening({
     onResponse: async (rawText) => {
+      // Handle session picker callback
+      if (rawText.startsWith('__session_pick__:') && pendingPickerText && pendingPickerSessions) {
+        const sessionId = rawText.split(':')[1];
+        const target = pendingPickerSessions.find(s => s.sessionId === sessionId);
+        const text = pendingPickerText;
+        pendingPickerText = undefined;
+        pendingPickerSessions = undefined;
+
+        if (target) {
+          const ok = await injector.sendResponse(target, text, 'idle_prompt');
+          if (ok) {
+            console.log(`[daemon] Injected "${text}" into ${target.tmuxPane} (via picker)`);
+          } else {
+            console.log(`[daemon] Failed to inject via picker`);
+          }
+        }
+        return;
+      }
+
       console.log(`[daemon] Received response from channel: "${rawText}"`);
       try {
         const resolved = resolveResponse(rawText);
-        if (!resolved) {
-          console.log('[daemon] No pending question to match');
-          return;
-        }
 
-        const { question, response } = resolved;
-        console.log(`[daemon] Matched to #${question.shortId} (${question.event.type}), injecting: "${response}"`);
+        if (resolved) {
+          const { question, response } = resolved;
+          const session = getSession(question.event.sessionId);
 
-        const session = getSession(question.event.sessionId);
-        if (!session) {
-          console.log('[daemon] Session no longer active');
+          if (session) {
+            const canResolve = await injector.resolve(session);
+            if (canResolve) {
+              const ok = await injector.sendResponse(session, response, question.event.type);
+              if (ok) {
+                removePending(question.event.id);
+                console.log(`[daemon] Injected "${response}" via ${injector.name}`);
+              } else {
+                console.log(`[daemon] Failed to inject via ${injector.name}`);
+              }
+              return;
+            }
+            console.log(`[daemon] Injector cannot resolve session, will try as free message`);
+          } else {
+            console.log(`[daemon] Session not found, will try as free message`);
+          }
           removePending(question.event.id);
+        }
+
+        // Fallback: treat as free message (strip #eventId prefix if present)
+        const cleanText = rawText.replace(/^#[\w-]+\s+/, '').trim();
+        if (!cleanText) {
+          console.log('[daemon] No text to inject');
           return;
         }
 
-        const canResolve = await injector.resolve(session);
-        if (!canResolve) {
-          console.log(`[daemon] Injector "${injector.name}" cannot resolve session (pid=${session.pid}, tmuxPane=${session.tmuxPane}, windowId=${session.windowId})`);
+        console.log(`[daemon] Routing as free message: "${cleanText}"`);
+        cleanDeadSessions();
+        const sessions = listSessions().filter(s => s.tmuxPane);
+
+        if (sessions.length === 0) {
+          console.log('[daemon] No active sessions');
+          if (channel.sendRaw) await channel.sendRaw('No active sessions.');
           return;
         }
 
-        const ok = await injector.sendResponse(session, response, question.event.type);
-        if (ok) {
-          removePending(question.event.id);
-          console.log(`[daemon] Injected "${response}" via ${injector.name}`);
-        } else {
-          console.log(`[daemon] Failed to inject via ${injector.name}`);
+        if (sessions.length === 1) {
+          const ok = await injector.sendResponse(sessions[0], cleanText, 'idle_prompt');
+          console.log(ok
+            ? `[daemon] Injected free message into ${sessions[0].tmuxPane}`
+            : `[daemon] Failed to inject free message`);
+          return;
+        }
+
+        // Multiple sessions — send picker
+        if (channel instanceof TelegramProvider) {
+          pendingPickerText = cleanText;
+          pendingPickerSessions = sessions;
+          const choices = sessions.map(s => ({
+            id: s.sessionId,
+            label: `${s.cwd.split('/').pop()} (${s.tmuxPane})`,
+          }));
+          channel.sendSessionPicker(
+            `Which session should receive:\n<pre>${escapeHtml(cleanText)}</pre>`,
+            choices,
+          );
+          console.log('[daemon] Session picker sent');
         }
       } catch (err) {
         console.error('[daemon] Error handling response:', err);
@@ -105,16 +167,20 @@ export async function startDaemon(): Promise<void> {
         }
 
         if (!targetSession && channel instanceof TelegramProvider) {
-          // Multiple sessions — ask user to pick
+          // Multiple sessions — send picker, don't block
           const sessionChoices = activeSessions.map(s => ({
             id: s.sessionId,
             label: `${s.cwd.split('/').pop()} (${s.tmuxPane})`,
           }));
-          const chosenId = await channel.waitForSessionPick(
-            `Which session should receive:\n<pre>${msg.text}</pre>`,
+          // Store the text to inject when the user picks a session
+          pendingPickerText = msg.text;
+          pendingPickerSessions = activeSessions;
+          channel.sendSessionPicker(
+            `Which session should receive:\n<pre>${escapeHtml(msg.text)}</pre>`,
             sessionChoices,
           );
-          targetSession = activeSessions.find(s => s.sessionId === chosenId);
+          console.log('[daemon] Session picker sent, waiting for selection...');
+          return;
         }
 
         if (!targetSession) {
