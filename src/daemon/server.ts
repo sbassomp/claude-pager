@@ -43,6 +43,8 @@ export async function createServer(deps: DaemonDeps) {
         sessionId,
         type: type as RelayEvent['type'],
         message: body.title ? `${body.title}: ${message}` : message,
+        toolName: body.tool_name || undefined,
+        toolInput: body.tool_input || undefined,
         project,
         timestamp: Date.now(),
       };

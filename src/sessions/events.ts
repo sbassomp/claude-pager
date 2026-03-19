@@ -48,12 +48,13 @@ export function resolveResponse(rawText: string): ResolvedResponse | null {
 
   const text = rawText.trim();
 
-  // Try "#N response" format for multiple pending
-  const numbered = text.match(/^#?(\d+)\s+(.+)$/s);
-  if (numbered) {
-    const num = numbered[1];
-    const response = numbered[2].trim();
-    const match = all.find(q => q.shortId === num);
+  // Try "#<id> response" format — id can be a shortId (number) or event UUID
+  const prefixed = text.match(/^#?([\w-]+)\s+(.+)$/s);
+  if (prefixed) {
+    const id = prefixed[1];
+    const response = prefixed[2].trim();
+    // Match by shortId (ntfy) or event ID (telegram)
+    const match = all.find(q => q.shortId === id || q.event.id === id);
     if (match) {
       return { question: match, response };
     }

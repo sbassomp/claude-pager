@@ -6,8 +6,9 @@ export interface RelayConfig {
 }
 
 export interface ChannelConfig {
-  type: 'ntfy';
+  type: 'ntfy' | 'telegram';
   ntfy?: NtfyConfig;
+  telegram?: TelegramConfig;
 }
 
 export interface NtfyConfig {
@@ -18,6 +19,11 @@ export interface NtfyConfig {
   token?: string;
 }
 
+export interface TelegramConfig {
+  botToken: string;
+  chatId: number;
+}
+
 export type EventType = 'permission_prompt' | 'idle_prompt';
 
 export interface RelayEvent {
@@ -25,6 +31,8 @@ export interface RelayEvent {
   sessionId: string;
   type: EventType;
   message: string;
+  toolName?: string;
+  toolInput?: string;
   project: string;
   timestamp: number;
 }

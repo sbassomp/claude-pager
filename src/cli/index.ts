@@ -11,7 +11,8 @@ const program = new Command();
 program
   .name('claude-relay')
   .description('Remote notification and response relay for Claude Code')
-  .version('0.1.0');
+  .version('0.1.0')
+  .enablePositionalOptions();
 
 program
   .command('start')
@@ -81,12 +82,12 @@ program
     await setup(options);
   });
 
-program
-  .command('run')
-  .description('Launch Claude Code inside a tmux session for reliable response injection')
-  .allowUnknownOption(true)
-  .action((_, cmd) => {
-    run(cmd.args);
-  });
+// Handle "run" manually to pass all remaining args to claude
+const runIdx = process.argv.indexOf('run');
+if (runIdx !== -1 && runIdx === 2) {
+  // Everything after "run" goes to claude
+  run(process.argv.slice(runIdx + 1));
+  process.exit(0);
+}
 
 program.parse();

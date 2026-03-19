@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { loadConfig, saveConfig, ensureDataDir } from '../config/index.js';
+import type { ChannelConfig } from '../types.js';
 
 const CLAUDE_SETTINGS_FILE = join(homedir(), '.claude', 'settings.json');
 
@@ -20,7 +21,6 @@ function prompt(question: string, defaultValue?: string): Promise<string> {
 function promptSecret(question: string): Promise<string> {
   return new Promise(resolve => {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    // Disable echo for password input
     if (process.stdin.isTTY) {
       process.stdout.write(`${question}: `);
       process.stdin.setRawMode(true);
@@ -38,7 +38,6 @@ function promptSecret(question: string): Promise<string> {
             input = input.slice(0, -1);
           }
         } else if (c === '\u0003') {
-          // Ctrl+C
           rl.close();
           process.exit(1);
         } else {
@@ -97,13 +96,32 @@ export async function setup(options: {
   ensureDataDir();
 
   const config = loadConfig();
-  const currentNtfy = config.channel.ntfy;
 
   console.log('=== claude-relay setup ===\n');
 
-  // Interactive prompts — CLI flags override
-  const server = options.server || await prompt('ntfy server URL', currentNtfy?.server || 'https://ntfy.sh');
-  const topic = options.topic || await prompt('ntfy topic', currentNtfy?.topic || 'claude-relay');
+  const channelType = await prompt('Channel: (n)tfy or (t)elegram?', config.channel.type === 'telegram' ? 't' : 'n');
+
+  let channel: ChannelConfig;
+
+  if (channelType.startsWith('t')) {
+    channel = await setupTelegram(config.channel.telegram);
+  } else {
+    channel = await setupNtfy(config.channel.ntfy, options);
+  }
+
+  config.channel = channel;
+  saveConfig(config);
+  console.log('\nConfiguration saved to ~/.claude-relay/config.json');
+
+  installHooks();
+}
+
+async function setupNtfy(
+  current?: { server: string; topic: string; user?: string; password?: string; token?: string },
+  options: { server?: string; topic?: string; user?: string; password?: string; token?: string } = {},
+): Promise<ChannelConfig> {
+  const server = options.server || await prompt('ntfy server URL', current?.server || 'https://ntfy.sh');
+  const topic = options.topic || await prompt('ntfy topic', current?.topic || 'claude-relay');
 
   const authMethod = await prompt('Authentication: (u)ser/password, (t)oken, or (n)one?', 'u');
 
@@ -114,35 +132,93 @@ export async function setup(options: {
   if (authMethod.startsWith('t')) {
     token = options.token || await promptSecret('ntfy access token');
   } else if (authMethod.startsWith('u')) {
-    user = options.user || await prompt('ntfy username', currentNtfy?.user || '');
+    user = options.user || await prompt('ntfy username', current?.user || '');
     password = options.password || await promptSecret('ntfy password');
   }
 
-  config.channel = {
-    type: 'ntfy',
-    ntfy: {
-      server,
-      topic,
-      ...(user && { user }),
-      ...(password && { password }),
-      ...(token && { token }),
-    },
+  const ntfy = {
+    server,
+    topic,
+    ...(user && { user }),
+    ...(password && { password }),
+    ...(token && { token }),
   };
 
-  saveConfig(config);
-  console.log('\nConfiguration saved to ~/.claude-relay/config.json');
-
-  // Test connection
   console.log('\nTesting ntfy connection...');
-  const testOk = await testNtfy(config.channel.ntfy!);
-  if (testOk) {
-    console.log('ntfy connection OK');
-  } else {
-    console.log('Warning: ntfy test failed — check your config');
+  const testOk = await testNtfy(ntfy);
+  console.log(testOk ? 'ntfy connection OK' : 'Warning: ntfy test failed');
+
+  return { type: 'ntfy', ntfy };
+}
+
+async function setupTelegram(
+  current?: { botToken: string; chatId: number },
+): Promise<ChannelConfig> {
+  const botToken = await promptSecret('Telegram bot token (from @BotFather)');
+
+  // Verify bot token
+  console.log('\nVerifying bot token...');
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/getMe`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = (await res.json()) as { ok: boolean; result?: { username: string } };
+    if (!data.ok) {
+      console.log('Error: invalid bot token');
+      process.exit(1);
+    }
+    console.log(`Bot: @${data.result!.username}`);
+  } catch (err) {
+    console.log(`Error: ${err}`);
+    process.exit(1);
   }
 
-  // Install Claude Code hooks
-  installHooks();
+  // Get chat ID
+  let chatId = current?.chatId;
+  if (!chatId) {
+    console.log('\nSend any message to your bot on Telegram, then press Enter here...');
+    await prompt('Press Enter when done');
+
+    // Fetch the latest message to get chat_id
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates?limit=1&offset=-1`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = (await res.json()) as { ok: boolean; result?: Array<{ message?: { chat: { id: number; first_name?: string } } }> };
+      if (data.ok && data.result?.length && data.result[0].message) {
+        chatId = data.result[0].message.chat.id;
+        console.log(`Chat ID: ${chatId} (${data.result[0].message.chat.first_name || 'unknown'})`);
+      } else {
+        console.log('Error: no message found. Make sure you sent a message to the bot.');
+        process.exit(1);
+      }
+    } catch (err) {
+      console.log(`Error: ${err}`);
+      process.exit(1);
+    }
+  } else {
+    console.log(`Using existing chat ID: ${chatId}`);
+  }
+
+  // Test by sending a message
+  console.log('\nSending test message...');
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: 'claude-relay setup OK',
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = (await res.json()) as { ok: boolean };
+    console.log(data.ok ? 'Telegram connection OK' : 'Warning: test message failed');
+  } catch (err) {
+    console.log(`Warning: ${err}`);
+  }
+
+  return { type: 'telegram', telegram: { botToken, chatId: chatId! } };
 }
 
 async function testNtfy(ntfy: { server: string; topic: string; user?: string; password?: string; token?: string }): Promise<boolean> {
@@ -183,10 +259,8 @@ function installHooks(): void {
     settings.hooks = {};
   }
 
-  // Merge hooks, preserving existing ones
   for (const [event, hookConfigs] of Object.entries(HOOKS_CONFIG)) {
     const existing = settings.hooks[event] || [];
-    // Check if our hook is already installed
     const alreadyInstalled = existing.some(group =>
       group.hooks.some(h => h.command.startsWith('claude-relay-hook')),
     );

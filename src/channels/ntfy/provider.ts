@@ -42,7 +42,15 @@ export class NtfyProvider implements ChannelProvider {
       ...this.authHeaders(),
     };
 
-    const body = `#${shortId} ${event.message}\n\n${hint}`;
+    let body = `#${shortId} ${event.message}`;
+    if (event.toolName) {
+      body += `\n${event.toolName}`;
+      if (event.toolInput) {
+        const input = event.toolInput.length > 200 ? event.toolInput.slice(0, 200) + '...' : event.toolInput;
+        body += `(${input})`;
+      }
+    }
+    body += `\n\n${hint}`;
 
     try {
       const res = await fetch(this.topicUrl, {
