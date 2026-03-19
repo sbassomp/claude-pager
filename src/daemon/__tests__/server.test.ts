@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from '../server.js';
 import type { ChannelProvider, NotificationResult } from '../../channels/channel.js';
 import type { InputInjector } from '../../injectors/injector.js';
-import type { RelayConfig, RelayEvent } from '../../types.js';
+import type { RelayConfig, RelayEvent, SessionInfo } from '../../types.js';
 import type { FastifyInstance } from 'fastify';
 
 function mockChannel(): ChannelProvider & { sent: RelayEvent[] } {
@@ -20,17 +20,16 @@ function mockChannel(): ChannelProvider & { sent: RelayEvent[] } {
   };
 }
 
-function mockInjector(): InputInjector & { typed: Array<{ windowId: number; text: string }> } {
-  const typed: Array<{ windowId: number; text: string }> = [];
+function mockInjector(): InputInjector & { injected: Array<{ session: SessionInfo; text: string }> } {
+  const injected: Array<{ session: SessionInfo; text: string }> = [];
   return {
     name: 'mock',
-    typed,
-    async findWindow() { return 12345; },
-    async typeText(windowId: number, text: string) {
-      typed.push({ windowId, text });
+    injected,
+    async resolve() { return true; },
+    async sendResponse(session: SessionInfo, text: string, _eventType: string) {
+      injected.push({ session, text });
       return true;
     },
-    async pressEnter() { return true; },
   };
 }
 
@@ -118,15 +117,12 @@ describe('HTTP server', () => {
     });
 
     it('should resolve and match a response to pending question', async () => {
-      // There's already a pending question from the events test above
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/respond',
         payload: { text: 'allow' },
       });
-
-      // Will fail on injection (no real session/window) but should resolve
-      // Either 200 (injected) or 500 (no session) — not 404
+      // 410 = session not active (expected since no real session), not 404
       assert.ok(res.statusCode !== 404, 'Should have found a matching pending question');
     });
   });

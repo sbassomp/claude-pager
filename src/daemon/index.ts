@@ -60,22 +60,18 @@ export async function startDaemon(): Promise<void> {
         return;
       }
 
-      let windowId = session.windowId;
-      if (!windowId) {
-        windowId = await injector.findWindow(session.pid) ?? undefined;
-      }
-      if (!windowId) {
-        console.log(`[daemon] Could not find window for PID ${session.pid}`);
+      const canResolve = await injector.resolve(session);
+      if (!canResolve) {
+        console.log(`[daemon] Injector "${injector.name}" cannot resolve session (pid=${session.pid}, tmuxPane=${session.tmuxPane}, windowId=${session.windowId})`);
         return;
       }
 
-      const typed = await injector.typeText(windowId, response);
-      if (typed) {
-        await injector.pressEnter(windowId);
+      const ok = await injector.sendResponse(session, response, question.event.type);
+      if (ok) {
         removePending(question.event.id);
-        console.log(`[daemon] Injected "${response}" into window ${windowId}`);
+        console.log(`[daemon] Injected "${response}" via ${injector.name}`);
       } else {
-        console.log(`[daemon] Failed to type into window ${windowId}`);
+        console.log(`[daemon] Failed to inject via ${injector.name}`);
       }
     } catch (err) {
       console.error('[daemon] Error handling response:', err);

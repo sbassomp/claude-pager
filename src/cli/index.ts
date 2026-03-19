@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { startDaemon, stopDaemon, isDaemonRunning } from '../daemon/index.js';
 import { setup } from './setup.js';
+import { run } from './run.js';
 import { loadConfig } from '../config/index.js';
 
 const program = new Command();
@@ -78,6 +79,14 @@ program
   .option('--token <token>', 'ntfy access token')
   .action(async (options) => {
     await setup(options);
+  });
+
+program
+  .command('run')
+  .description('Launch Claude Code inside a tmux session for reliable response injection')
+  .allowUnknownOption(true)
+  .action((_, cmd) => {
+    run(cmd.args);
   });
 
 program.parse();

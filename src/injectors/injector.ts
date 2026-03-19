@@ -1,9 +1,9 @@
+import type { EventType, SessionInfo } from '../types.js';
+
 export interface InputInjector {
   readonly name: string;
 
-  findWindow(pid: number): Promise<number | null>;
+  resolve(session: SessionInfo): Promise<boolean>;
 
-  typeText(windowId: number, text: string): Promise<boolean>;
-
-  pressEnter(windowId: number): Promise<boolean>;
+  sendResponse(session: SessionInfo, text: string, eventType: EventType): Promise<boolean>;
 }

@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import type { RelayConfig, RelayEvent } from '../types.js';
 import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
-import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
+import { addPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
 import { randomUUID } from 'node:crypto';
 
@@ -10,36 +10,6 @@ interface DaemonDeps {
   config: RelayConfig;
   channel: ChannelProvider;
   injector: InputInjector;
-}
-
-async function injectResponse(
-  injector: InputInjector,
-  sessionId: string,
-  eventId: string,
-  response: string,
-): Promise<{ ok: boolean; error?: string }> {
-  const session = getSession(sessionId);
-  if (!session) {
-    removePending(eventId);
-    return { ok: false, error: 'Session no longer active' };
-  }
-
-  let windowId = session.windowId;
-  if (!windowId) {
-    windowId = await injector.findWindow(session.pid) ?? undefined;
-  }
-  if (!windowId) {
-    return { ok: false, error: 'Could not find terminal window for session' };
-  }
-
-  const typed = await injector.typeText(windowId, response);
-  if (!typed) {
-    return { ok: false, error: 'Failed to type response into terminal' };
-  }
-
-  await injector.pressEnter(windowId);
-  removePending(eventId);
-  return { ok: true };
 }
 
 export async function createServer(deps: DaemonDeps) {
@@ -77,7 +47,6 @@ export async function createServer(deps: DaemonDeps) {
         timestamp: Date.now(),
       };
 
-      // Pre-generate shortId before sending so it appears in the notification
       const shortId = addPending(event);
       const result = await channel.send(event, shortId);
       if (result.success) {
@@ -103,17 +72,19 @@ export async function createServer(deps: DaemonDeps) {
         return reply.status(404).send({ error: 'No pending question to match this response' });
       }
 
-      const result = await injectResponse(
-        injector,
-        resolved.question.event.sessionId,
-        resolved.question.event.id,
-        resolved.response,
-      );
-
-      if (!result.ok) {
-        return reply.status(500).send({ error: result.error });
+      const { question, response } = resolved;
+      const session = getSession(question.event.sessionId);
+      if (!session) {
+        removePending(question.event.id);
+        return reply.status(410).send({ error: 'Session no longer active' });
       }
-      return { ok: true, matched: resolved.question.shortId, injected: true };
+
+      const ok = await injector.sendResponse(session, response, question.event.type);
+      if (!ok) {
+        return reply.status(500).send({ error: 'Failed to inject response' });
+      }
+      removePending(question.event.id);
+      return { ok: true, matched: question.shortId, injected: true };
     },
   );
 

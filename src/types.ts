@@ -1,7 +1,7 @@
 export interface RelayConfig {
   port: number;
   channel: ChannelConfig;
-  injector: 'auto' | 'xdotool' | 'applescript';
+  injector: 'auto' | 'tmux' | 'xdotool' | 'applescript';
   dataDir: string;
 }
 
@@ -35,6 +35,7 @@ export interface SessionInfo {
   tty: string;
   cwd: string;
   windowId?: number;
+  tmuxPane?: string;
   timestamp: number;
 }
 

@@ -32,6 +32,7 @@ async function handleSessionStart(): Promise<void> {
     tty: process.env.TTY || '',
     cwd: data.cwd || process.cwd(),
     windowId: getActiveWindowId(),
+    tmuxPane: process.env.TMUX_PANE || undefined,
     timestamp: Date.now(),
   };
 
@@ -62,6 +63,11 @@ async function handleNotification(): Promise<void> {
   } catch (err) {
     console.error('[hook] daemon unreachable:', err);
   }
+}
+
+// Skip if relay is explicitly disabled (e.g. when working on claude-relay itself)
+if (process.env.CLAUDE_RELAY_DISABLED) {
+  process.exit(0);
 }
 
 const command = process.argv[2];
