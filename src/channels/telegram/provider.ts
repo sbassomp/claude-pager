@@ -42,18 +42,18 @@ export class TelegramProvider implements ChannelProvider {
     const isPermission = event.type === 'permission_prompt';
 
     // Build message text (HTML format)
-    let text = `<b>#${shortId} ${this.escapeHtml(projectName)}</b>\n`;
+    const icon = isPermission ? '🔒' : '💬';
+    let text = `${icon} <b>#${shortId} ${this.escapeHtml(projectName)}</b>\n\n`;
     if (event.toolName) {
       text += `<code>${this.escapeHtml(event.toolName)}</code>`;
       if (event.toolInput) {
-        const input = event.toolInput.length > 200
-          ? event.toolInput.slice(0, 200) + '...'
+        const input = event.toolInput.length > 300
+          ? event.toolInput.slice(0, 300) + '...'
           : event.toolInput;
         text += `\n<pre>${this.escapeHtml(input)}</pre>`;
       }
-      text += '\n';
     } else {
-      text += `${this.escapeHtml(event.message)}\n`;
+      text += this.markdownToHtml(event.message);
     }
 
     // Build inline keyboard
@@ -220,6 +220,59 @@ export class TelegramProvider implements ChannelProvider {
 
   private escapeHtml(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  private markdownToHtml(md: string): string {
+    const escaped = this.escapeHtml(md);
+    let result = '';
+    let inCodeBlock = false;
+
+    for (const line of escaped.split('\n')) {
+      // Code block fences
+      if (line.match(/^```/)) {
+        if (inCodeBlock) {
+          result += '</pre>\n';
+          inCodeBlock = false;
+        } else {
+          result += '<pre>';
+          inCodeBlock = true;
+        }
+        continue;
+      }
+
+      if (inCodeBlock) {
+        result += line + '\n';
+        continue;
+      }
+
+      let converted = line;
+
+      // Headers → bold
+      converted = converted.replace(/^#{1,3}\s+(.+)$/, '<b>$1</b>');
+
+      // Bold **text** or __text__
+      converted = converted.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+      converted = converted.replace(/__(.+?)__/g, '<b>$1</b>');
+
+      // Italic *text* or _text_ (but not inside words)
+      converted = converted.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<i>$1</i>');
+      converted = converted.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<i>$1</i>');
+
+      // Inline code `text`
+      converted = converted.replace(/`([^`]+?)`/g, '<code>$1</code>');
+
+      // Bullet points
+      converted = converted.replace(/^(\s*)[-*]\s+/, '$1• ');
+
+      result += converted + '\n';
+    }
+
+    // Close unclosed code block
+    if (inCodeBlock) {
+      result += '</pre>\n';
+    }
+
+    return result.trimEnd();
   }
 
   stopListening(): void {

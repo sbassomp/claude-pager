@@ -65,6 +65,33 @@ function extractToolContext(transcriptPath: string): { toolName?: string; toolIn
   return {};
 }
 
+function extractLastAssistantMessage(transcriptPath: string): string | undefined {
+  try {
+    const content = readFileSync(transcriptPath, 'utf-8');
+    const lines = content.trim().split('\n');
+    // Read last entries to find the most recent assistant text
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
+          const textBlocks = entry.message.content
+            .filter((b: { type: string; text?: string }) => b.type === 'text' && b.text)
+            .map((b: { text: string }) => b.text);
+          if (textBlocks.length > 0) {
+            const full = textBlocks.join('\n');
+            return full.length > 3500 ? full.slice(-3500) : full;
+          }
+        }
+      } catch {
+        // skip
+      }
+    }
+  } catch {
+    // transcript not readable
+  }
+  return undefined;
+}
+
 async function handleSessionStart(): Promise<void> {
   const input = await readStdin();
   const data = JSON.parse(input);
@@ -93,12 +120,20 @@ async function handleNotification(): Promise<void> {
     return;
   }
 
-  // Enrich permission prompts with tool context from transcript
   let enriched = data;
-  if (type === 'permission_prompt' && data.transcript_path) {
-    const ctx = extractToolContext(data.transcript_path);
-    if (ctx.toolName) {
-      enriched = { ...data, tool_name: ctx.toolName, tool_input: ctx.toolInput };
+  if (data.transcript_path) {
+    if (type === 'permission_prompt') {
+      // Enrich with tool name and input
+      const ctx = extractToolContext(data.transcript_path);
+      if (ctx.toolName) {
+        enriched = { ...data, tool_name: ctx.toolName, tool_input: ctx.toolInput };
+      }
+    } else if (type === 'idle_prompt') {
+      // Enrich with last assistant message for context
+      const lastMsg = extractLastAssistantMessage(data.transcript_path);
+      if (lastMsg) {
+        enriched = { ...data, message: lastMsg };
+      }
     }
   }
 
