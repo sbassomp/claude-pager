@@ -4,7 +4,7 @@ import { homedir } from 'node:os';
 import { safeJsonParse } from '../utils/json.js';
 import type { RelayConfig } from '../types.js';
 
-const DATA_DIR = join(homedir(), '.claude-relay');
+const DATA_DIR = join(homedir(), '.claude-pager');
 const CONFIG_FILE = join(DATA_DIR, 'config.json');
 
 const DEFAULT_CONFIG: RelayConfig = {

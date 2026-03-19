@@ -14,7 +14,7 @@ const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'),
 const program = new Command();
 
 program
-  .name('claude-relay')
+  .name('claude-pager')
   .description('Remote notification and response relay for Claude Code')
   .version(pkg.version)
   .enablePositionalOptions();

@@ -2,7 +2,7 @@
 
 ## Overview
 
-claude-relay is a lightweight daemon that bridges local Claude Code instances to the remote user via notification channels.
+claude-pager is a lightweight daemon that bridges local Claude Code instances to the remote user via notification channels.
 
 ## Main components
 
@@ -66,7 +66,7 @@ Each injector can:
 
 Mapping between Claude Code sessions and terminal windows:
 
-- The SessionStart hook writes `~/.claude-relay/sessions/<session_id>.json` with `{ pid, tty, cwd, tmuxPane, timestamp }`
+- The SessionStart hook writes `~/.claude-pager/sessions/<session_id>.json` with `{ pid, tty, cwd, tmuxPane, timestamp }`
 - The tracker uses the tmux pane or PID to find the target window
 - Dead sessions are automatically cleaned up
 
@@ -100,7 +100,7 @@ Mapping between Claude Code sessions and terminal windows:
 
 ## Configuration
 
-File `~/.claude-relay/config.json`:
+File `~/.claude-pager/config.json`:
 
 ```json
 {

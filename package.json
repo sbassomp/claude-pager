@@ -1,12 +1,12 @@
 {
-  "name": "claude-relay",
+  "name": "claude-pager",
   "version": "0.1.0",
   "description": "Remote notification and response relay for Claude Code CLI sessions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "claude-relay": "dist/cli/index.js",
-    "claude-relay-hook": "dist/hooks/index.js"
+    "claude-pager": "dist/cli/index.js",
+    "claude-pager-hook": "dist/hooks/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -32,9 +32,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sbassomp/claude-relay.git"
+    "url": "https://github.com/sbassomp/claude-pager.git"
   },
-  "homepage": "https://github.com/sbassomp/claude-relay",
+  "homepage": "https://github.com/sbassomp/claude-pager",
   "dependencies": {
     "commander": "^13.1.0",
     "fastify": "^5.3.3"

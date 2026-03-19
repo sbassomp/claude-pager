@@ -2,7 +2,7 @@
 
 ## Why ntfy?
 
-ntfy is one of the supported notification channels for claude-relay:
+ntfy is one of the supported notification channels for claude-pager:
 
 - **Self-hostable**: no dependency on a third-party service
 - **Action buttons**: supports buttons with HTTP callbacks (Allow/Deny/Reply)
@@ -13,7 +13,7 @@ ntfy is one of the supported notification channels for claude-relay:
 ## Notification format
 
 ```bash
-curl -X POST https://ntfy.example.com/claude-relay \
+curl -X POST https://ntfy.example.com/claude-pager \
   -H "Title: Claude Code — myproject" \
   -H "Priority: high" \
   -H "Tags: robot,question" \
@@ -37,7 +37,7 @@ The simplest and most secure approach. The user **replies to the ntfy message** 
 
 ```bash
 # The daemon subscribes to the topic via polling
-curl -s "https://ntfy.example.com/claude-relay/json?poll=1&since=30s"
+curl -s "https://ntfy.example.com/claude-pager/json?poll=1&since=30s"
 ```
 
 No need to expose the daemon to the internet. No tunnel. Just polling on the existing ntfy topic.
@@ -50,7 +50,7 @@ No need to expose the daemon to the internet. No tunnel. Just polling on the exi
     "type": "ntfy",
     "ntfy": {
       "server": "https://ntfy.example.com",
-      "topic": "claude-relay",
+      "topic": "claude-pager",
       "token": "tk_..."
     }
   }

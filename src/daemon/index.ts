@@ -57,7 +57,7 @@ export async function startDaemon(): Promise<void> {
 
   try {
     await app.listen({ port: config.port, host: '127.0.0.1' });
-    console.log(`claude-relay daemon listening on 127.0.0.1:${config.port}`);
+    console.log(`claude-pager daemon listening on 127.0.0.1:${config.port}`);
   } catch (err) {
     try { unlinkSync(PID_FILE()); } catch { /* ignore */ }
     throw err;

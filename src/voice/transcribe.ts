@@ -20,7 +20,7 @@ let scriptPath: string | null = null;
 
 function getScriptPath(): string {
   if (!scriptPath) {
-    const dir = mkdtempSync(join(tmpdir(), 'claude-relay-whisper-'));
+    const dir = mkdtempSync(join(tmpdir(), 'claude-pager-whisper-'));
     scriptPath = join(dir, 'transcribe.py');
     writeFileSync(scriptPath, WHISPER_SCRIPT);
   }
@@ -59,7 +59,7 @@ export async function downloadTelegramVoice(
   if (!fileRes.ok) throw new Error(`Failed to download file: ${fileRes.status}`);
 
   const buffer = Buffer.from(await fileRes.arrayBuffer());
-  const dir = mkdtempSync(join(tmpdir(), 'claude-relay-voice-'));
+  const dir = mkdtempSync(join(tmpdir(), 'claude-pager-voice-'));
   const ext = data.result.file_path.split('.').pop() || 'ogg';
   const localPath = join(dir, `voice.${ext}`);
   writeFileSync(localPath, buffer);

@@ -37,7 +37,7 @@ const TEST_CONFIG: RelayConfig = {
   port: 0,
   channel: { type: 'ntfy' },
   injector: 'auto',
-  dataDir: '/tmp/claude-relay-test',
+  dataDir: '/tmp/claude-pager-test',
 };
 
 describe('HTTP server', () => {

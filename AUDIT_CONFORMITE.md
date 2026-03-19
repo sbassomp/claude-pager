@@ -1,7 +1,7 @@
-# Conformity Audit - claude-relay
+# Conformity Audit - claude-pager
 
 **Date**: 2026-03-19 (v2)
-**Project**: claude-relay v0.1.0
+**Project**: claude-pager v0.1.0
 **Language**: TypeScript (Node.js >= 20)
 **Framework**: Fastify 5, Commander 13
 **Auditor**: Automated audit

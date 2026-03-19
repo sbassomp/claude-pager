@@ -66,7 +66,7 @@ const HOOKS_CONFIG = {
       hooks: [
         {
           type: 'command',
-          command: 'claude-relay-hook session-start',
+          command: 'claude-pager-hook session-start',
           timeout: 3000,
         },
       ],
@@ -78,7 +78,7 @@ const HOOKS_CONFIG = {
       hooks: [
         {
           type: 'command',
-          command: 'claude-relay-hook notification',
+          command: 'claude-pager-hook notification',
           timeout: 5000,
         },
       ],
@@ -97,7 +97,7 @@ export async function setup(options: {
 
   const config = loadConfig();
 
-  console.log('=== claude-relay setup ===\n');
+  console.log('=== claude-pager setup ===\n');
 
   const channelType = await prompt('Channel: (n)tfy or (t)elegram?', config.channel.type === 'telegram' ? 't' : 'n');
 
@@ -111,7 +111,7 @@ export async function setup(options: {
 
   config.channel = channel;
   saveConfig(config);
-  console.log('\nConfiguration saved to ~/.claude-relay/config.json');
+  console.log('\nConfiguration saved to ~/.claude-pager/config.json');
 
   installHooks();
 }
@@ -121,7 +121,7 @@ async function setupNtfy(
   options: { server?: string; topic?: string; user?: string; password?: string; token?: string } = {},
 ): Promise<ChannelConfig> {
   const server = options.server || await prompt('ntfy server URL', current?.server || 'https://ntfy.sh');
-  const topic = options.topic || await prompt('ntfy topic', current?.topic || 'claude-relay');
+  const topic = options.topic || await prompt('ntfy topic', current?.topic || 'claude-pager');
 
   const authMethod = await prompt('Authentication: (u)ser/password, (t)oken, or (n)one?', 'u');
 
@@ -205,7 +205,7 @@ async function setupTelegram(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: 'claude-relay setup OK',
+        text: 'claude-pager setup OK',
       }),
       signal: AbortSignal.timeout(10000),
     });
@@ -221,7 +221,7 @@ async function setupTelegram(
 async function testNtfy(ntfy: { server: string; topic: string; user?: string; password?: string; token?: string }): Promise<boolean> {
   const headers: Record<string, string> = {
     'Content-Type': 'text/plain',
-    Title: 'claude-relay',
+    Title: 'claude-pager',
     Priority: 'low',
     Tags: 'white_check_mark',
   };
@@ -235,7 +235,7 @@ async function testNtfy(ntfy: { server: string; topic: string; user?: string; pa
     const res = await fetch(`${ntfy.server}/${ntfy.topic}`, {
       method: 'POST',
       headers,
-      body: 'claude-relay setup OK',
+      body: 'claude-pager setup OK',
       signal: AbortSignal.timeout(10000),
     });
     return res.ok;
@@ -259,7 +259,7 @@ function installHooks(): void {
   for (const [event, hookConfigs] of Object.entries(HOOKS_CONFIG)) {
     const existing = settings.hooks[event] || [];
     const alreadyInstalled = existing.some(group =>
-      group.hooks.some(h => h.command.startsWith('claude-relay-hook')),
+      group.hooks.some(h => h.command.startsWith('claude-pager-hook')),
     );
 
     if (!alreadyInstalled) {

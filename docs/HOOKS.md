@@ -4,7 +4,7 @@
 
 Claude Code supports a hook system configured in `~/.claude/settings.json`. Hooks are shell commands executed in response to session lifecycle events.
 
-## Hooks used by claude-relay
+## Hooks used by claude-pager
 
 ### SessionStart
 
@@ -19,7 +19,7 @@ Triggered when a Claude Code session starts. Registers the session → terminal 
         "hooks": [
           {
             "type": "command",
-            "command": "claude-relay-hook session-start",
+            "command": "claude-pager-hook session-start",
             "timeout": 3000
           }
         ]
@@ -37,7 +37,7 @@ The hook receives on stdin:
 }
 ```
 
-It writes to `~/.claude-relay/sessions/<session_id>.json`:
+It writes to `~/.claude-pager/sessions/<session_id>.json`:
 ```json
 {
   "sessionId": "abc-123",
@@ -62,7 +62,7 @@ Triggered when Claude Code needs user interaction.
         "hooks": [
           {
             "type": "command",
-            "command": "claude-relay-hook notification",
+            "command": "claude-pager-hook notification",
             "timeout": 5000
           }
         ]
@@ -83,4 +83,4 @@ The hook receives the event JSON on stdin, enriches it with tool context from th
 
 ## Hook installation
 
-The `claude-relay setup` command automatically modifies `~/.claude/settings.json` to add these hooks. It preserves any existing hooks.
+The `claude-pager setup` command automatically modifies `~/.claude/settings.json` to add these hooks. It preserves any existing hooks.

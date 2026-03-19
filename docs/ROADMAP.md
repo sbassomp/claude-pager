@@ -12,7 +12,7 @@ Goal: working notification and response relay on Linux.
 - [x] Channel Telegram (inline keyboards, reply routing, voice transcription)
 - [x] Injector tmux (send-keys to the correct pane)
 - [x] Injector xdotool (type + keypress in the right terminal)
-- [x] CLI: `claude-relay setup`, `start`, `stop`, `status`, `pending`, `recover`
+- [x] CLI: `claude-pager setup`, `start`, `stop`, `status`, `pending`, `recover`
 - [x] Systemd user service for auto-start
 - [ ] Publish npm package
 

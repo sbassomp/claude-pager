@@ -6,8 +6,8 @@ import { registerSession } from '../sessions/tracker.js';
 import { ensureDataDir } from '../config/index.js';
 import type { SessionInfo } from '../types.js';
 
-// Skip if relay is explicitly disabled (e.g. when working on claude-relay itself)
-if (process.env.CLAUDE_RELAY_DISABLED) {
+// Skip if relay is explicitly disabled (e.g. when working on claude-pager itself)
+if (process.env.CLAUDE_PAGER_DISABLED) {
   process.exit(0);
 }
 
@@ -138,7 +138,7 @@ async function handleNotification(): Promise<void> {
   }
 
   // Forward to daemon
-  const port = process.env.CLAUDE_RELAY_PORT || '17380';
+  const port = process.env.CLAUDE_PAGER_PORT || '17380';
   try {
     const res = await fetch(`http://127.0.0.1:${port}/api/v1/events`, {
       method: 'POST',
@@ -170,6 +170,6 @@ switch (command) {
     });
     break;
   default:
-    console.error(`Usage: claude-relay-hook <session-start|notification>`);
+    console.error(`Usage: claude-pager-hook <session-start|notification>`);
     process.exit(1);
 }

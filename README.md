@@ -1,12 +1,12 @@
-# claude-relay
+# claude-pager
 
-Relay notifications and responses between Claude Code CLI sessions and your phone. When Claude needs your input (permission prompt, idle question) and you're away from the terminal, `claude-relay` sends a notification to your phone and types your response back into the correct tmux pane.
+Relay notifications and responses between Claude Code CLI sessions and your phone. When Claude needs your input (permission prompt, idle question) and you're away from the terminal, `claude-pager` sends a notification to your phone and types your response back into the correct tmux pane.
 
 ## How it works
 
 ```
 ┌─────────────┐    hook → HTTP     ┌──────────────┐   Telegram / ntfy   ┌──────────┐
-│ Claude Code  │ ────────────────► │ claude-relay  │ ──────────────────► │  Phone   │
+│ Claude Code  │ ────────────────► │ claude-pager  │ ──────────────────► │  Phone   │
 │ (N instances)│                   │   daemon      │ ◄────────────────── │  (reply) │
 └─────────────┘                   └──────┬───────┘                     └──────────┘
                                          │ tmux send-keys
@@ -27,7 +27,7 @@ Relay notifications and responses between Claude Code CLI sessions and your phon
 - **Multi-session** — run N Claude Code instances in tmux, responses route to the correct pane
 - **Telegram** — inline keyboards (Allow/Deny), reply-to-message routing, voice transcription (Whisper)
 - **ntfy** — self-hosted or ntfy.sh, mobile push notifications
-- **Session recovery** — `claude-relay recover` detects existing Claude sessions in tmux
+- **Session recovery** — `claude-pager recover` detects existing Claude sessions in tmux
 - **Smart routing** — `#id response` for explicit targeting, auto-route for single session, session picker for ambiguous cases
 - **Fallback by project** — if a session UUID is no longer registered, matches by `cwd` (project directory)
 
@@ -41,15 +41,15 @@ Relay notifications and responses between Claude Code CLI sessions and your phon
 ## Installation
 
 ```bash
-npm install -g claude-relay
+npm install -g claude-pager
 ```
 
 ## Setup
 
-Interactive configuration — creates `~/.claude-relay/config.json` and installs Claude Code hooks in `~/.claude/settings.json`:
+Interactive configuration — creates `~/.claude-pager/config.json` and installs Claude Code hooks in `~/.claude/settings.json`:
 
 ```bash
-claude-relay setup
+claude-pager setup
 ```
 
 The setup wizard lets you choose between **Telegram** and **ntfy** as notification channel, and verifies the connection.
@@ -68,10 +68,10 @@ Point to your ntfy server (self-hosted or `https://ntfy.sh`) with a topic and op
 
 ```bash
 # Foreground (for testing)
-claude-relay start
+claude-pager start
 
 # As a systemd user service (recommended)
-cat > ~/.config/systemd/user/claude-relay.service << 'EOF'
+cat > ~/.config/systemd/user/claude-pager.service << 'EOF'
 [Unit]
 Description=Claude Code Relay Daemon
 After=network-online.target
@@ -79,8 +79,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/claude-relay start
-ExecStop=%h/.local/bin/claude-relay stop
+ExecStart=%h/.local/bin/claude-pager start
+ExecStop=%h/.local/bin/claude-pager stop
 Restart=on-failure
 RestartSec=5
 Environment=NODE_ENV=production
@@ -88,17 +88,17 @@ Environment=NODE_ENV=production
 [Install]
 WantedBy=default.target
 EOF
-# If claude-relay is installed via nvm, adjust ExecStart path:
-#   ExecStart=/home/you/.nvm/versions/node/v22.x.x/bin/claude-relay start
+# If claude-pager is installed via nvm, adjust ExecStart path:
+#   ExecStart=/home/you/.nvm/versions/node/v22.x.x/bin/claude-pager start
 systemctl --user daemon-reload
-systemctl --user enable --now claude-relay
+systemctl --user enable --now claude-pager
 ```
 
 ### Launch Claude Code in tmux
 
 ```bash
-claude-relay run              # opens a new tmux session with claude
-claude-relay run --resume     # pass args through to claude
+claude-pager run              # opens a new tmux session with claude
+claude-pager run --resume     # pass args through to claude
 ```
 
 Or just run `claude` directly inside tmux — the `SessionStart` hook registers the session automatically.
@@ -108,15 +108,15 @@ Or just run `claude` directly inside tmux — the `SessionStart` hook registers 
 If you already have Claude Code running in tmux panes:
 
 ```bash
-claude-relay recover
+claude-pager recover
 ```
 
 ### Other commands
 
 ```bash
-claude-relay status           # daemon status + health check
-claude-relay pending          # list pending questions
-claude-relay stop             # stop the daemon
+claude-pager status           # daemon status + health check
+claude-pager pending          # list pending questions
+claude-pager stop             # stop the daemon
 ```
 
 ## Responding to notifications
@@ -136,7 +136,7 @@ claude-relay stop             # stop the daemon
 
 ## Configuration
 
-`~/.claude-relay/config.json`:
+`~/.claude-pager/config.json`:
 
 ```json
 {
@@ -158,7 +158,7 @@ claude-relay stop             # stop the daemon
 | `channel.type` | `"ntfy"` | `"ntfy"` or `"telegram"` |
 | `injector` | `"auto"` | `"auto"`, `"tmux"`, or `"xdotool"` |
 
-The hook port can be overridden with `CLAUDE_RELAY_PORT` environment variable.
+The hook port can be overridden with `CLAUDE_PAGER_PORT` environment variable.
 
 ## Architecture
 
