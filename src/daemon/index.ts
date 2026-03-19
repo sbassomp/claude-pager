@@ -5,7 +5,9 @@ import { createChannel } from '../channels/factory.js';
 import { createInjector } from '../injectors/factory.js';
 import { createServer } from './server.js';
 import { resolveResponse, removePending } from '../sessions/events.js';
-import { getSession } from '../sessions/tracker.js';
+import { getSession, listSessions, cleanDeadSessions } from '../sessions/tracker.js';
+import type { FreeMessage } from '../channels/channel.js';
+import { TelegramProvider } from '../channels/telegram/provider.js';
 
 const PID_FILE = () => join(getDataDir(), 'daemon.pid');
 
@@ -41,41 +43,95 @@ export async function startDaemon(): Promise<void> {
   writeFileSync(PID_FILE(), String(process.pid));
 
   // Start polling for responses from the channel
-  channel.startListening(async (rawText) => {
-    console.log(`[daemon] Received response from channel: "${rawText}"`);
-    try {
-      const resolved = resolveResponse(rawText);
-      if (!resolved) {
-        console.log('[daemon] No pending question to match');
-        return;
-      }
+  channel.startListening({
+    onResponse: async (rawText) => {
+      console.log(`[daemon] Received response from channel: "${rawText}"`);
+      try {
+        const resolved = resolveResponse(rawText);
+        if (!resolved) {
+          console.log('[daemon] No pending question to match');
+          return;
+        }
 
-      const { question, response } = resolved;
-      console.log(`[daemon] Matched to #${question.shortId} (${question.event.type}), injecting: "${response}"`);
+        const { question, response } = resolved;
+        console.log(`[daemon] Matched to #${question.shortId} (${question.event.type}), injecting: "${response}"`);
 
-      const session = getSession(question.event.sessionId);
-      if (!session) {
-        console.log('[daemon] Session no longer active');
-        removePending(question.event.id);
-        return;
-      }
+        const session = getSession(question.event.sessionId);
+        if (!session) {
+          console.log('[daemon] Session no longer active');
+          removePending(question.event.id);
+          return;
+        }
 
-      const canResolve = await injector.resolve(session);
-      if (!canResolve) {
-        console.log(`[daemon] Injector "${injector.name}" cannot resolve session (pid=${session.pid}, tmuxPane=${session.tmuxPane}, windowId=${session.windowId})`);
-        return;
-      }
+        const canResolve = await injector.resolve(session);
+        if (!canResolve) {
+          console.log(`[daemon] Injector "${injector.name}" cannot resolve session (pid=${session.pid}, tmuxPane=${session.tmuxPane}, windowId=${session.windowId})`);
+          return;
+        }
 
-      const ok = await injector.sendResponse(session, response, question.event.type);
-      if (ok) {
-        removePending(question.event.id);
-        console.log(`[daemon] Injected "${response}" via ${injector.name}`);
-      } else {
-        console.log(`[daemon] Failed to inject via ${injector.name}`);
+        const ok = await injector.sendResponse(session, response, question.event.type);
+        if (ok) {
+          removePending(question.event.id);
+          console.log(`[daemon] Injected "${response}" via ${injector.name}`);
+        } else {
+          console.log(`[daemon] Failed to inject via ${injector.name}`);
+        }
+      } catch (err) {
+        console.error('[daemon] Error handling response:', err);
       }
-    } catch (err) {
-      console.error('[daemon] Error handling response:', err);
-    }
+    },
+
+    onFreeMessage: async (msg: FreeMessage) => {
+      console.log(`[daemon] Free message: "${msg.text}"${msg.sessionId ? ` (session: ${msg.sessionId})` : ''}`);
+      try {
+        cleanDeadSessions();
+        const sessions = listSessions();
+        const activeSessions = sessions.filter(s => s.tmuxPane);
+
+        if (activeSessions.length === 0) {
+          await msg.replyCallback('No active sessions.');
+          return;
+        }
+
+        let targetSession;
+
+        // If sessionId is known (reply to a notification), use it directly
+        if (msg.sessionId) {
+          targetSession = activeSessions.find(s => s.sessionId === msg.sessionId);
+        }
+
+        if (!targetSession && activeSessions.length === 1) {
+          targetSession = activeSessions[0];
+        }
+
+        if (!targetSession && channel instanceof TelegramProvider) {
+          // Multiple sessions — ask user to pick
+          const sessionChoices = activeSessions.map(s => ({
+            id: s.sessionId,
+            label: `${s.cwd.split('/').pop()} (${s.tmuxPane})`,
+          }));
+          const chosenId = await channel.waitForSessionPick(
+            `Which session should receive:\n<pre>${msg.text}</pre>`,
+            sessionChoices,
+          );
+          targetSession = activeSessions.find(s => s.sessionId === chosenId);
+        }
+
+        if (!targetSession) {
+          await msg.replyCallback('Could not determine target session.');
+          return;
+        }
+
+        const ok = await injector.sendResponse(targetSession, msg.text, 'idle_prompt');
+        if (ok) {
+          console.log(`[daemon] Injected free message into ${targetSession.tmuxPane}`);
+        } else {
+          await msg.replyCallback('Failed to inject message.');
+        }
+      } catch (err) {
+        console.error('[daemon] Error handling free message:', err);
+      }
+    },
   });
 
   // Graceful shutdown

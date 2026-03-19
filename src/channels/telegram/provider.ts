@@ -1,4 +1,4 @@
-import type { ChannelProvider, NotificationResult } from '../channel.js';
+import type { ChannelProvider, ChannelListeners, NotificationResult, FreeMessage } from '../channel.js';
 import type { TelegramConfig, RelayEvent } from '../../types.js';
 
 interface TelegramResponse {
@@ -28,6 +28,8 @@ export class TelegramProvider implements ChannelProvider {
   private lastUpdateId = 0;
   // Map telegram message_id → event_id for reply-based routing
   private messageToEvent = new Map<number, string>();
+  // Map telegram message_id → session_id for free message routing
+  private messageToSession = new Map<number, string>();
 
   constructor(config: TelegramConfig) {
     this.config = config;
@@ -61,8 +63,8 @@ export class TelegramProvider implements ChannelProvider {
       ? {
           inline_keyboard: [
             [
-              { text: 'Allow', callback_data: `allow:${event.id}` },
-              { text: 'Deny', callback_data: `deny:${event.id}` },
+              { text: '✅ Allow', callback_data: `allow:${event.id}` },
+              { text: '❌ Deny', callback_data: `deny:${event.id}` },
             ],
           ],
         }
@@ -88,6 +90,7 @@ export class TelegramProvider implements ChannelProvider {
       const messageId = data.result?.message_id;
       if (messageId) {
         this.messageToEvent.set(messageId, event.id);
+        this.messageToSession.set(messageId, event.sessionId);
       }
       return { success: true, messageId: String(messageId) };
     } catch (err) {
@@ -95,15 +98,50 @@ export class TelegramProvider implements ChannelProvider {
     }
   }
 
-  startListening(onResponse: (rawText: string) => void | Promise<void>): void {
-    this.stopListening();
-    this.abortController = new AbortController();
-    this.poll(onResponse);
+  async sendRaw(text: string): Promise<void> {
+    await fetch(this.apiUrl('sendMessage'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: this.config.chatId,
+        text,
+        parse_mode: 'HTML',
+      }),
+    });
   }
 
-  private async poll(
-    onResponse: (rawText: string) => void | Promise<void>,
-  ): Promise<void> {
+  async sendSessionPicker(text: string, sessions: Array<{ id: string; label: string }>): Promise<number | undefined> {
+    const keyboard = {
+      inline_keyboard: sessions.map(s => [
+        { text: s.label, callback_data: `session:${s.id}` },
+      ]),
+    };
+
+    try {
+      const res = await fetch(this.apiUrl('sendMessage'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: this.config.chatId,
+          text,
+          parse_mode: 'HTML',
+          reply_markup: keyboard,
+        }),
+      });
+      const data = (await res.json()) as TelegramResponse;
+      return data.result?.message_id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  startListening(listeners: ChannelListeners): void {
+    this.stopListening();
+    this.abortController = new AbortController();
+    this.poll(listeners);
+  }
+
+  private async poll(listeners: ChannelListeners): Promise<void> {
     const signal = this.abortController!.signal;
 
     while (!signal.aborted) {
@@ -126,15 +164,18 @@ export class TelegramProvider implements ChannelProvider {
           this.lastUpdateId = update.update_id + 1;
 
           if (update.callback_query) {
-            await this.handleCallback(update.callback_query, onResponse);
-          } else if (update.message?.text && update.message.reply_to_message) {
-            await this.handleReply(update.message, onResponse);
+            await this.handleCallback(update.callback_query, listeners);
+          } else if (update.message?.text) {
+            if (update.message.reply_to_message) {
+              await this.handleReply(update.message, listeners);
+            } else if (listeners.onFreeMessage) {
+              await this.handleFreeMessage(update.message, listeners.onFreeMessage);
+            }
           }
         }
       } catch (err) {
         if (signal.aborted) return;
         console.error('[telegram] poll error:', err);
-        // Wait before retrying on error
         await new Promise<void>(resolve => {
           const timer = setTimeout(resolve, 5000);
           signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
@@ -145,7 +186,7 @@ export class TelegramProvider implements ChannelProvider {
 
   private async handleCallback(
     cb: NonNullable<TelegramUpdate['callback_query']>,
-    onResponse: (rawText: string) => void | Promise<void>,
+    listeners: ChannelListeners,
   ): Promise<void> {
     // Acknowledge the button press
     try {
@@ -158,9 +199,30 @@ export class TelegramProvider implements ChannelProvider {
 
     if (!cb.data) return;
 
-    // Parse callback data: "allow:event-id" or "deny:event-id"
-    const [action, eventId] = cb.data.split(':', 2);
-    if (!eventId) return;
+    const [action, id] = cb.data.split(':', 2);
+    if (!id) return;
+
+    // Session picker callback
+    if (action === 'session' && this.pendingFreeMessage) {
+      const { text, resolve } = this.pendingFreeMessage;
+      this.pendingFreeMessage = undefined;
+      // Update picker message
+      if (cb.message) {
+        try {
+          await fetch(this.apiUrl('editMessageText'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: cb.message.chat.id,
+              message_id: cb.message.message_id,
+              text: `➡️ Sent to session`,
+            }),
+          });
+        } catch { /* best effort */ }
+      }
+      resolve(id);
+      return;
+    }
 
     const responseText = action === 'allow' ? 'allow' : action === 'deny' ? 'deny' : action;
 
@@ -175,7 +237,7 @@ export class TelegramProvider implements ChannelProvider {
             message_id: cb.message.message_id,
             reply_markup: {
               inline_keyboard: [
-                [{ text: `${action === 'allow' ? 'Allowed' : 'Denied'}`, callback_data: 'noop' }],
+                [{ text: action === 'allow' ? '✅ Allowed' : '❌ Denied', callback_data: 'noop' }],
               ],
             },
           }),
@@ -183,38 +245,75 @@ export class TelegramProvider implements ChannelProvider {
       } catch { /* best effort */ }
     }
 
-    console.log(`[telegram] callback: ${action} for event ${eventId}`);
-    // Use the exact event ID format for resolveResponse
+    console.log(`[telegram] callback: ${action} for event ${id}`);
     try {
-      await Promise.resolve(onResponse(`#${eventId} ${responseText}`));
+      await Promise.resolve(listeners.onResponse(`#${id} ${responseText}`));
     } catch (err) {
       console.error('[telegram] callback handler error:', err);
     }
   }
 
+  private pendingFreeMessage?: { text: string; resolve: (sessionId: string) => void };
+
+  private async handleFreeMessage(
+    msg: NonNullable<TelegramUpdate['message']>,
+    onFreeMessage: (msg: FreeMessage) => void | Promise<void>,
+  ): Promise<void> {
+    if (!msg.text) return;
+
+    console.log(`[telegram] free message: "${msg.text}"`);
+    try {
+      await Promise.resolve(onFreeMessage({
+        text: msg.text,
+        replyCallback: async (reply: string) => {
+          await this.sendRaw(reply);
+        },
+      }));
+    } catch (err) {
+      console.error('[telegram] free message handler error:', err);
+    }
+  }
+
   private async handleReply(
     msg: NonNullable<TelegramUpdate['message']>,
-    onResponse: (rawText: string) => void | Promise<void>,
+    listeners: ChannelListeners,
   ): Promise<void> {
     if (!msg.text || !msg.reply_to_message) return;
 
-    // Find the event ID from the original message
-    const eventId = this.messageToEvent.get(msg.reply_to_message.message_id);
+    const replyToId = msg.reply_to_message.message_id;
+    const eventId = this.messageToEvent.get(replyToId);
+
     if (eventId) {
+      // Reply to a notification with a pending event
       console.log(`[telegram] reply to event ${eventId}: "${msg.text}"`);
       try {
-        await Promise.resolve(onResponse(`#${eventId} ${msg.text}`));
+        await Promise.resolve(listeners.onResponse(`#${eventId} ${msg.text}`));
       } catch (err) {
         console.error('[telegram] reply handler error:', err);
       }
-    } else {
-      // No mapping found, forward as raw text
-      console.log(`[telegram] raw message: "${msg.text}"`);
+      return;
+    }
+
+    const sessionId = this.messageToSession.get(replyToId);
+    if (sessionId && listeners.onFreeMessage) {
+      // Reply to a notification — we know the session, inject directly
+      console.log(`[telegram] reply to session ${sessionId}: "${msg.text}"`);
       try {
-        await Promise.resolve(onResponse(msg.text));
+        await Promise.resolve(listeners.onFreeMessage({
+          text: msg.text,
+          sessionId,
+          replyCallback: async (reply: string) => { await this.sendRaw(reply); },
+        }));
       } catch (err) {
-        console.error('[telegram] message handler error:', err);
+        console.error('[telegram] reply handler error:', err);
       }
+      return;
+    }
+
+    if (listeners.onFreeMessage) {
+      // Reply to an unknown message — treat as free message
+      console.log(`[telegram] reply as free message: "${msg.text}"`);
+      await this.handleFreeMessage(msg, listeners.onFreeMessage);
     }
   }
 
@@ -228,7 +327,6 @@ export class TelegramProvider implements ChannelProvider {
     let inCodeBlock = false;
 
     for (const line of escaped.split('\n')) {
-      // Code block fences
       if (line.match(/^```/)) {
         if (inCodeBlock) {
           result += '</pre>\n';
@@ -246,33 +344,30 @@ export class TelegramProvider implements ChannelProvider {
       }
 
       let converted = line;
-
-      // Headers → bold
       converted = converted.replace(/^#{1,3}\s+(.+)$/, '<b>$1</b>');
-
-      // Bold **text** or __text__
       converted = converted.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
       converted = converted.replace(/__(.+?)__/g, '<b>$1</b>');
-
-      // Italic *text* or _text_ (but not inside words)
       converted = converted.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<i>$1</i>');
       converted = converted.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<i>$1</i>');
-
-      // Inline code `text`
       converted = converted.replace(/`([^`]+?)`/g, '<code>$1</code>');
-
-      // Bullet points
       converted = converted.replace(/^(\s*)[-*]\s+/, '$1• ');
 
       result += converted + '\n';
     }
 
-    // Close unclosed code block
     if (inCodeBlock) {
       result += '</pre>\n';
     }
 
     return result.trimEnd();
+  }
+
+  /** Wait for the user to pick a session via inline keyboard */
+  waitForSessionPick(text: string, sessions: Array<{ id: string; label: string }>): Promise<string> {
+    return new Promise((resolve) => {
+      this.pendingFreeMessage = { text, resolve };
+      this.sendSessionPicker(text, sessions);
+    });
   }
 
   stopListening(): void {

@@ -1,4 +1,4 @@
-import type { ChannelProvider, NotificationResult } from '../channel.js';
+import type { ChannelProvider, ChannelListeners, NotificationResult } from '../channel.js';
 import type { NtfyConfig, RelayEvent } from '../../types.js';
 
 export class NtfyProvider implements ChannelProvider {
@@ -74,10 +74,10 @@ export class NtfyProvider implements ChannelProvider {
     }
   }
 
-  startListening(onResponse: (rawText: string) => void | Promise<void>): void {
+  startListening(listeners: ChannelListeners): void {
     this.stopListening();
     this.abortController = new AbortController();
-    this.poll(onResponse);
+    this.poll(listeners.onResponse);
   }
 
   private async poll(

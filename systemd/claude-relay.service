@@ -1,13 +1,15 @@
 [Unit]
 Description=Claude Code Relay Daemon
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.npm-global/bin/claude-relay start
-ExecStop=%h/.npm-global/bin/claude-relay stop
+ExecStart=%h/.local/bin/claude-pager start
+ExecStop=%h/.local/bin/claude-pager stop
 Restart=on-failure
 RestartSec=5
+Environment=NODE_ENV=production
 Environment=NODE_ENV=production
 
 [Install]
