@@ -4,6 +4,7 @@ import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import { addPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
+import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
 
 interface DaemonDeps {
@@ -12,8 +13,36 @@ interface DaemonDeps {
   injector: InputInjector;
 }
 
+// JSON Schemas for Fastify validation
+const eventBodySchema = {
+  type: 'object',
+  required: ['session_id', 'message'],
+  properties: {
+    session_id: { type: 'string', minLength: 1 },
+    notification_type: { type: 'string' },
+    type: { type: 'string' },
+    message: { type: 'string', minLength: 1 },
+    title: { type: 'string' },
+    cwd: { type: 'string' },
+    tool_name: { type: 'string' },
+    tool_input: { type: 'string' },
+  },
+  anyOf: [
+    { required: ['notification_type'] },
+    { required: ['type'] },
+  ],
+} as const;
+
+const respondBodySchema = {
+  type: 'object',
+  required: ['text'],
+  properties: {
+    text: { type: 'string', minLength: 1 },
+  },
+} as const;
+
 export async function createServer(deps: DaemonDeps) {
-  const { config, channel, injector } = deps;
+  const { channel, injector } = deps;
   const app = Fastify({ logger: true });
 
   // Health check
@@ -22,17 +51,21 @@ export async function createServer(deps: DaemonDeps) {
   });
 
   // Receive events from hooks
-  // Claude Code sends: { session_id, notification_type, message, title, cwd, ... }
   app.post<{ Body: Record<string, string> }>(
     '/api/v1/events',
+    { schema: { body: eventBodySchema } },
     async (request, reply) => {
       const body = request.body;
-      const sessionId = body?.session_id;
-      const type = body?.notification_type || body?.type;
-      const message = body?.message;
+      const sessionId = body.session_id;
+      const type = body.notification_type || body.type;
+      const message = body.message;
 
-      if (!sessionId || !type || !message) {
-        return reply.status(400).send({ error: 'Missing required fields: session_id, notification_type/type, message' });
+      if (!isValidSessionId(sessionId)) {
+        return reply.status(400).send({ error: 'Invalid session_id format' });
+      }
+
+      if (!isValidEventType(type)) {
+        return reply.status(400).send({ error: `Invalid event type: ${type}` });
       }
 
       const session = getSession(sessionId);
@@ -41,7 +74,7 @@ export async function createServer(deps: DaemonDeps) {
       const event: RelayEvent = {
         id: randomUUID(),
         sessionId,
-        type: type as RelayEvent['type'],
+        type,
         message: body.title ? `${body.title}: ${message}` : message,
         toolName: body.tool_name || undefined,
         toolInput: body.tool_input || undefined,
@@ -61,13 +94,11 @@ export async function createServer(deps: DaemonDeps) {
   );
 
   // Receive raw response text (from channel polling)
-  app.post<{ Body: { text?: string } }>(
+  app.post<{ Body: { text: string } }>(
     '/api/v1/respond',
+    { schema: { body: respondBodySchema } },
     async (request, reply) => {
-      const text = request.body?.text;
-      if (!text) {
-        return reply.status(400).send({ error: 'Missing required field: text' });
-      }
+      const { text } = request.body;
 
       const resolved = resolveResponse(text);
       if (!resolved) {
@@ -75,7 +106,15 @@ export async function createServer(deps: DaemonDeps) {
       }
 
       const { question, response } = resolved;
-      const session = getSession(question.event.sessionId);
+      let session = getSession(question.event.sessionId);
+      if (!session) {
+        // Fallback: find by cwd
+        cleanDeadSessions();
+        const byCwd = listSessions().filter(s =>
+          s.tmuxPane && s.cwd === question.event.project,
+        );
+        if (byCwd.length === 1) session = byCwd[0];
+      }
       if (!session) {
         removePending(question.event.id);
         return reply.status(410).send({ error: 'Session no longer active' });

@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { startDaemon, stopDaemon, isDaemonRunning } from '../daemon/index.js';
 import { setup } from './setup.js';
 import { run } from './run.js';
 import { recover } from './recover.js';
 import { loadConfig } from '../config/index.js';
 
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8'));
+
 const program = new Command();
 
 program
   .name('claude-relay')
   .description('Remote notification and response relay for Claude Code')
-  .version('0.1.0')
+  .version(pkg.version)
   .enablePositionalOptions();
 
 program

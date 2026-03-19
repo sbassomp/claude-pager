@@ -24,6 +24,8 @@ export interface ChannelProvider {
 
   sendRaw?(text: string): Promise<void>;
 
+  sendSessionPicker?(text: string, sessions: Array<{ id: string; label: string }>): Promise<number | undefined>;
+
   startListening(listeners: ChannelListeners): void;
 
   stopListening(): void;

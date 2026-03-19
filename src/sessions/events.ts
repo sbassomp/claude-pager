@@ -1,7 +1,7 @@
 import type { PendingQuestion, RelayEvent } from '../types.js';
 
 const pending = new Map<string, PendingQuestion>();
-let nextShortId = 1;
+let nextShortId = (Date.now() % 10000) + 1;
 let insertionOrder = 0;
 
 export function addPending(event: RelayEvent, channelMessageId?: string): string {

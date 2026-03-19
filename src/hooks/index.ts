@@ -138,8 +138,9 @@ async function handleNotification(): Promise<void> {
   }
 
   // Forward to daemon
+  const port = process.env.CLAUDE_RELAY_PORT || '17380';
   try {
-    const res = await fetch('http://127.0.0.1:17380/api/v1/events', {
+    const res = await fetch(`http://127.0.0.1:${port}/api/v1/events`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(enriched),

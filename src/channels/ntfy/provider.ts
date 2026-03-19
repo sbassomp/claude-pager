@@ -66,6 +66,7 @@ export class NtfyProvider implements ChannelProvider {
 
       const data = (await res.json()) as { id?: string };
       if (data.id) {
+        this.capSet(this.processedIds, 1000);
         this.processedIds.add(data.id);
       }
       return { success: true, messageId: data.id };
@@ -103,7 +104,10 @@ export class NtfyProvider implements ChannelProvider {
               const msg = JSON.parse(line) as { id?: string; event?: string; message?: string };
               if (msg.event !== 'message' || !msg.message) continue;
               if (msg.id && this.processedIds.has(msg.id)) continue;
-              if (msg.id) this.processedIds.add(msg.id);
+              if (msg.id) {
+                this.capSet(this.processedIds, 1000);
+                this.processedIds.add(msg.id);
+              }
               if (/^#\d+ .+\n\nReply[ :]/.test(msg.message)) continue;
 
               console.log(`[ntfy] received response: "${msg.message}"`);
@@ -113,7 +117,7 @@ export class NtfyProvider implements ChannelProvider {
                 console.error('[ntfy] callback error:', cbErr);
               }
             } catch {
-              // skip malformed line
+              console.debug('[ntfy] skipping malformed line:', line.slice(0, 80));
             }
           }
         }
@@ -128,6 +132,13 @@ export class NtfyProvider implements ChannelProvider {
         const timer = setTimeout(resolve, 5000);
         signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
       });
+    }
+  }
+
+  private capSet(set: Set<string>, max: number): void {
+    if (set.size >= max) {
+      const first = set.values().next().value;
+      if (first !== undefined) set.delete(first);
     }
   }
 

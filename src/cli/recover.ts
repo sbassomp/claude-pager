@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { registerSession } from '../sessions/tracker.js';
 import { ensureDataDir } from '../config/index.js';
-import { randomUUID } from 'node:crypto';
 
 export function recover(): void {
   ensureDataDir();

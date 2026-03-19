@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { safeJsonParse } from '../utils/json.js';
 import type { RelayConfig } from '../types.js';
 
 const DATA_DIR = join(homedir(), '.claude-relay');
@@ -30,7 +31,7 @@ export function loadConfig(): RelayConfig {
     return { ...DEFAULT_CONFIG };
   }
   const raw = readFileSync(CONFIG_FILE, 'utf-8');
-  return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+  return { ...DEFAULT_CONFIG, ...safeJsonParse<Partial<RelayConfig>>(raw, {}) };
 }
 
 export function saveConfig(config: RelayConfig): void {

@@ -1,6 +1,7 @@
 import type { ChannelProvider, ChannelListeners, NotificationResult, FreeMessage } from '../channel.js';
 import type { TelegramConfig, RelayEvent } from '../../types.js';
-import { downloadTelegramVoice, transcribeAudio, cleanupFile } from '../../voice/transcribe.js';
+import { escapeHtml, markdownToHtml } from '../../utils/html.js';
+import { handleVoiceMessage } from './voice-handler.js';
 
 interface TelegramResponse {
   ok: boolean;
@@ -22,6 +23,8 @@ interface TelegramUpdate {
     reply_to_message?: { message_id: number };
   };
 }
+
+const MAP_MAX_SIZE = 500;
 
 export class TelegramProvider implements ChannelProvider {
   readonly name = 'telegram';
@@ -47,17 +50,17 @@ export class TelegramProvider implements ChannelProvider {
 
     // Build message text (HTML format)
     const icon = isPermission ? '🔒' : '💬';
-    let text = `${icon} <b>#${shortId} ${this.escapeHtml(projectName)}</b>\n\n`;
+    let text = `${icon} <b>#${shortId} ${escapeHtml(projectName)}</b>\n\n`;
     if (event.toolName) {
-      text += `<code>${this.escapeHtml(event.toolName)}</code>`;
+      text += `<code>${escapeHtml(event.toolName)}</code>`;
       if (event.toolInput) {
         const input = event.toolInput.length > 300
           ? event.toolInput.slice(0, 300) + '...'
           : event.toolInput;
-        text += `\n<pre>${this.escapeHtml(input)}</pre>`;
+        text += `\n<pre>${escapeHtml(input)}</pre>`;
       }
     } else {
-      text += this.markdownToHtml(event.message);
+      text += markdownToHtml(event.message);
     }
 
     // Build inline keyboard
@@ -82,6 +85,7 @@ export class TelegramProvider implements ChannelProvider {
           parse_mode: 'HTML',
           reply_markup: keyboard,
         }),
+        signal: AbortSignal.timeout(15000),
       });
 
       const data = (await res.json()) as TelegramResponse;
@@ -91,6 +95,8 @@ export class TelegramProvider implements ChannelProvider {
 
       const messageId = data.result?.message_id;
       if (messageId) {
+        this.capMap(this.messageToEvent);
+        this.capMap(this.messageToSession);
         this.messageToEvent.set(messageId, event.id);
         this.messageToSession.set(messageId, event.sessionId);
       }
@@ -109,6 +115,7 @@ export class TelegramProvider implements ChannelProvider {
         text,
         parse_mode: 'HTML',
       }),
+      signal: AbortSignal.timeout(15000),
     });
   }
 
@@ -129,6 +136,7 @@ export class TelegramProvider implements ChannelProvider {
           parse_mode: 'HTML',
           reply_markup: keyboard,
         }),
+        signal: AbortSignal.timeout(15000),
       });
       const data = (await res.json()) as TelegramResponse;
       return data.result?.message_id;
@@ -264,77 +272,12 @@ export class TelegramProvider implements ChannelProvider {
     msg: NonNullable<TelegramUpdate['message']>,
     listeners: ChannelListeners,
   ): Promise<void> {
-    if (!msg.voice) return;
-
-    console.log(`[telegram] voice message received (${msg.voice.duration}s)`);
-
-    // Send a "transcribing..." feedback
-    let statusMsgId: number | undefined;
-    try {
-      const res = await fetch(this.apiUrl('sendMessage'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: this.config.chatId,
-          text: '🎙️ Transcribing...',
-          reply_to_message_id: msg.message_id,
-        }),
-      });
-      const data = (await res.json()) as TelegramResponse;
-      statusMsgId = data.result?.message_id;
-    } catch { /* best effort */ }
-
-    let audioPath: string | undefined;
-    try {
-      // Download and transcribe
-      audioPath = await downloadTelegramVoice(this.config.botToken, msg.voice.file_id);
-      const result = await transcribeAudio(audioPath, this.config.voiceLanguage || 'fr');
-      const text = result.text.trim();
-
-      console.log(`[telegram] transcribed (${result.language}): "${text}"`);
-
-      // Update status message with transcription
-      if (statusMsgId) {
-        try {
-          await fetch(this.apiUrl('editMessageText'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: this.config.chatId,
-              message_id: statusMsgId,
-              text: `🎙️ "${text}"`,
-            }),
-          });
-        } catch { /* best effort */ }
-      }
-
-      if (!text) return;
-
-      // Treat transcribed text like a regular message
-      const fakeMsg = { ...msg, text };
-      if (msg.reply_to_message) {
-        await this.handleReply(fakeMsg, listeners);
-      } else if (listeners.onFreeMessage) {
-        await this.handleFreeMessage(fakeMsg, listeners.onFreeMessage);
-      }
-    } catch (err) {
-      console.error('[telegram] voice transcription error:', err);
-      if (statusMsgId) {
-        try {
-          await fetch(this.apiUrl('editMessageText'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: this.config.chatId,
-              message_id: statusMsgId,
-              text: `❌ Transcription failed: ${err}`,
-            }),
-          });
-        } catch { /* best effort */ }
-      }
-    } finally {
-      if (audioPath) cleanupFile(audioPath);
-    }
+    await handleVoiceMessage(msg, listeners, {
+      config: this.config,
+      apiUrl: (method) => this.apiUrl(method),
+      handleReply: (m, l) => this.handleReply(m as NonNullable<TelegramUpdate['message']>, l),
+      handleFreeMessage: (m, cb) => this.handleFreeMessage(m as NonNullable<TelegramUpdate['message']>, cb),
+    });
   }
 
   private async handleFreeMessage(
@@ -399,49 +342,11 @@ export class TelegramProvider implements ChannelProvider {
     }
   }
 
-  private escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  private markdownToHtml(md: string): string {
-    const escaped = this.escapeHtml(md);
-    let result = '';
-    let inCodeBlock = false;
-
-    for (const line of escaped.split('\n')) {
-      if (line.match(/^```/)) {
-        if (inCodeBlock) {
-          result += '</pre>\n';
-          inCodeBlock = false;
-        } else {
-          result += '<pre>';
-          inCodeBlock = true;
-        }
-        continue;
-      }
-
-      if (inCodeBlock) {
-        result += line + '\n';
-        continue;
-      }
-
-      let converted = line;
-      converted = converted.replace(/^#{1,3}\s+(.+)$/, '<b>$1</b>');
-      converted = converted.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-      converted = converted.replace(/__(.+?)__/g, '<b>$1</b>');
-      converted = converted.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<i>$1</i>');
-      converted = converted.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<i>$1</i>');
-      converted = converted.replace(/`([^`]+?)`/g, '<code>$1</code>');
-      converted = converted.replace(/^(\s*)[-*]\s+/, '$1• ');
-
-      result += converted + '\n';
+  private capMap(map: Map<number, string>): void {
+    if (map.size >= MAP_MAX_SIZE) {
+      const first = map.keys().next().value;
+      if (first !== undefined) map.delete(first);
     }
-
-    if (inCodeBlock) {
-      result += '</pre>\n';
-    }
-
-    return result.trimEnd();
   }
 
   stopListening(): void {

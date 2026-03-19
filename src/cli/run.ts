@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
 
 export function run(args: string[]): void {
@@ -6,15 +6,14 @@ export function run(args: string[]): void {
   const project = basename(process.cwd());
   const sessionName = `claude-${project}-${process.pid}`;
 
-  // Build the claude command with any extra args
-  const claudeArgs = args.length > 0 ? args.join(' ') : '';
-  const claudeCmd = claudeArgs ? `claude ${claudeArgs}` : 'claude';
+  // Build the claude args array (safe from injection)
+  const claudeArgs = ['claude', ...args];
 
   // Check if we're already inside tmux
   if (process.env.TMUX) {
     // Already in tmux — just run claude directly
     console.log(`Already in tmux (pane ${process.env.TMUX_PANE}), launching Claude Code...`);
-    execSync(claudeCmd, { stdio: 'inherit' });
+    execFileSync('claude', args, { stdio: 'inherit' });
     return;
   }
 
@@ -25,7 +24,7 @@ export function run(args: string[]): void {
     execFileSync('tmux', [
       'new-session',
       '-s', sessionName,
-      claudeCmd,
+      ...claudeArgs,
     ], { stdio: 'inherit' });
   } catch {
     // tmux returns non-zero when the session ends normally

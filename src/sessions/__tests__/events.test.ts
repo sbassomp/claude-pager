@@ -86,7 +86,7 @@ describe('event store', () => {
 
     it('should route numbered response to the correct question', () => {
       const shortId1 = addPending(makeEvent('evt-1'));
-      const shortId2 = addPending(makeEvent('evt-2'));
+      addPending(makeEvent('evt-2'));
 
       const result = resolveResponse(`#${shortId1} deny`);
       assert.ok(result);

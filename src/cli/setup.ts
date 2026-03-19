@@ -164,13 +164,11 @@ async function setupTelegram(
     });
     const data = (await res.json()) as { ok: boolean; result?: { username: string } };
     if (!data.ok) {
-      console.log('Error: invalid bot token');
-      process.exit(1);
+      throw new Error('Invalid bot token');
     }
     console.log(`Bot: @${data.result!.username}`);
   } catch (err) {
-    console.log(`Error: ${err}`);
-    process.exit(1);
+    throw new Error(`Bot verification failed: ${err}`, { cause: err });
   }
 
   // Get chat ID
@@ -189,12 +187,11 @@ async function setupTelegram(
         chatId = data.result[0].message.chat.id;
         console.log(`Chat ID: ${chatId} (${data.result[0].message.chat.first_name || 'unknown'})`);
       } else {
-        console.log('Error: no message found. Make sure you sent a message to the bot.');
-        process.exit(1);
+        throw new Error('No message found. Make sure you sent a message to the bot.');
       }
     } catch (err) {
-      console.log(`Error: ${err}`);
-      process.exit(1);
+      if (err instanceof Error) throw err;
+      throw new Error(`Failed to get chat ID: ${err}`, { cause: err });
     }
   } else {
     console.log(`Using existing chat ID: ${chatId}`);
