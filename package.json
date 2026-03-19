@@ -29,7 +29,13 @@
     "relay",
     "ntfy"
   ],
+  "author": "Seb Bassompierre <seb@kaseilabs.com> (https://kaseilabs.com)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/softs/claude-relay.git"
+  },
+  "homepage": "https://github.com/softs/claude-relay",
   "dependencies": {
     "commander": "^13.1.0",
     "fastify": "^5.3.3"
