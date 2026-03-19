@@ -1,6 +1,9 @@
 # claude-pager
 
-Relay notifications and responses between Claude Code CLI sessions and your phone. When Claude needs your input (permission prompt, idle question) and you're away from the terminal, `claude-pager` sends a notification to your phone and types your response back into the correct tmux pane.
+[![npm version](https://img.shields.io/npm/v/claude-pager.svg)](https://www.npmjs.com/package/claude-pager)
+[![license](https://img.shields.io/npm/l/claude-pager.svg)](https://github.com/sbassomp/claude-pager/blob/main/LICENSE)
+
+Get paged on your phone when Claude Code needs input. Reply from Telegram or ntfy, and `claude-pager` types your response into the correct terminal.
 
 ## How it works
 
