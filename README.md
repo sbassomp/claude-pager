@@ -9,15 +9,17 @@ Get paged on your phone when Claude Code needs input. Reply from Telegram or ntf
 ## How it works
 
 ```
-┌─────────────┐    hook → HTTP     ┌──────────────┐   Telegram / ntfy   ┌──────────┐
-│ Claude Code  │ ────────────────► │ claude-pager  │ ──────────────────► │  Phone   │
-│ (N instances)│                   │   daemon      │ ◄────────────────── │  (reply) │
-└─────────────┘                   └──────┬───────┘                     └──────────┘
-                                         │ tmux send-keys
+┌───────────────┐   hook → HTTP   ┌────────────────┐  Telegram / ntfy  ┌─────────┐
+│  Claude Code   │ ─────────────► │  claude-pager   │ ───────────────► │  Phone  │
+│ (N instances)  │                │     daemon      │ ◄─────────────── │ (reply) │
+└───────────────┘                └───────┬────────┘                   └─────────┘
+                                         │
+                                    tmux send-keys
+                                         │
                                          ▼
-                                  ┌──────────────┐
-                                  │ Right terminal│
-                                  └──────────────┘
+                                 ┌───────────────┐
+                                 │ Right terminal │
+                                 └───────────────┘
 ```
 
 1. Claude Code hooks fire when an instance needs user input
