@@ -1,6 +1,6 @@
 {
   "name": "claude-pager",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Remote notification and response relay for Claude Code CLI sessions",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
