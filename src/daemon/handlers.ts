@@ -110,8 +110,15 @@ export function createChannelHandlers(
           removePending(question.event.id);
         }
 
-        // Fallback: treat as free message (strip #eventId prefix if present)
-        const cleanText = rawText.replace(/^#[\w-]+\s+/, '').trim();
+        // If the text looks like a response to an expired event, don't inject as free message
+        if (/^#[\w-]{8,}\s+/.test(rawText)) {
+          console.log('[daemon] Response to expired event, ignoring:', rawText.slice(0, 60));
+          if (channel.sendRaw) await channel.sendRaw('Event expired. The permission prompt may have timed out.');
+          return;
+        }
+
+        // Fallback: treat as free message (strip #shortId prefix if present)
+        const cleanText = rawText.replace(/^#\d+\s+/, '').trim();
         if (!cleanText) {
           console.log('[daemon] No text to inject');
           return;

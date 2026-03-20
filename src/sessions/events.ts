@@ -24,7 +24,7 @@ export function removePending(eventId: string): void {
   pending.delete(eventId);
 }
 
-const PENDING_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const PENDING_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export function listPending(): PendingQuestion[] {
   // Expire old questions
