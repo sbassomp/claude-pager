@@ -195,7 +195,7 @@ See `docs/ARCHITECTURE.md` for the detailed flow.
 - HTTP API binds to `127.0.0.1` only — no network exposure
 - Input validation with Fastify JSON Schema + custom validators (`isValidEventType`, `isValidSessionId`)
 - No shell injection — all child processes use `execFileSync` with argument arrays
-- No code content in notifications — only tool names, project names, and question types
+- Minimal context in notifications — tool names, project names, and truncated tool input (max 300 chars)
 - Memory-bounded maps (capped at 500-1000 entries)
 - Safe JSON parsing with fallbacks for corrupted files
 
