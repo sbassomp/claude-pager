@@ -6,27 +6,24 @@
 
 Get paged on your phone when Claude Code needs input. Reply from Telegram or ntfy, and `claude-pager` types your response into the correct terminal.
 
-## How it works
+![Notification with Allow/Deny buttons](docs/screenshots/02-notification.png)
 
-```
-┌───────────────┐   hook → HTTP   ┌────────────────┐  Telegram / ntfy  ┌─────────┐
-│  Claude Code   │ ─────────────► │  claude-pager   │ ───────────────► │  Phone  │
-│ (N instances)  │                │     daemon      │ ◄─────────────── │ (reply) │
-└───────────────┘                └───────┬────────┘                   └─────────┘
-                                         │
-                                    tmux send-keys
-                                         │
-                                         ▼
-                                 ┌───────────────┐
-                                 │ Right terminal │
-                                 └───────────────┘
-```
+## How it works
 
 1. Claude Code hooks fire when an instance needs user input
 2. The hook enriches the event (tool name, last assistant message) and sends it to the daemon
 3. The daemon dispatches a notification to your phone via Telegram or ntfy
 4. You respond — tap Allow/Deny, type a message, or send a voice note
 5. The daemon matches the response to the right session and injects it via `tmux send-keys`
+
+| Step | Screenshot |
+|------|-----------|
+| Claude Code asks for permission | ![Claude waiting](docs/screenshots/01-typing.png) |
+| Notification arrives on your phone | ![Telegram notification](docs/screenshots/02-notification.png) |
+| You reply from Telegram | ![Reply and allow](docs/screenshots/03-allow.png) |
+| Claude resumes automatically | ![Result](docs/screenshots/04-result.png) |
+
+> See the full [demo video](docs/demo.mp4) (~50s).
 
 ## Features
 
