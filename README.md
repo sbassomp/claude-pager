@@ -6,7 +6,9 @@
 
 Get paged on your phone when Claude Code needs input. Reply from Telegram or ntfy, and `claude-pager` types your response into the correct terminal.
 
-![Notification with Allow/Deny buttons](docs/screenshots/02-notification.png)
+[![Demo video](docs/screenshots/02-notification.png)](https://youtu.be/cbrvN3xTurk)
+
+> Click the image above to watch the demo (~50s)
 
 ## How it works
 
@@ -22,8 +24,6 @@ Get paged on your phone when Claude Code needs input. Reply from Telegram or ntf
 | Notification arrives on your phone | ![Telegram notification](docs/screenshots/02-notification.png) |
 | You reply from Telegram | ![Reply and allow](docs/screenshots/03-allow.png) |
 | Claude resumes automatically | ![Result](docs/screenshots/04-result.png) |
-
-> See the full [demo video](docs/demo.mp4) (~50s).
 
 ## Features
 
