@@ -14,7 +14,10 @@ Goal: working notification and response relay on Linux.
 - [x] Injector xdotool (type + keypress in the right terminal)
 - [x] CLI: `claude-pager setup`, `start`, `stop`, `status`, `pending`, `recover`
 - [x] Systemd user service for auto-start
-- [ ] Publish npm package
+- [x] Publish npm package
+- [x] ESLint + typescript-eslint (0 errors)
+- [x] Security audit (input validation, safe JSON parsing, memory caps)
+- [x] GitHub mirror + npm badges
 
 ## Phase 2 — Messaging & Platform support
 
