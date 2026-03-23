@@ -6,7 +6,7 @@
 
 Get paged on your phone when Claude Code needs input. Reply from Telegram or ntfy, and `claude-pager` types your response into the correct terminal.
 
-[![Demo video](docs/screenshots/02-notification.png)](https://youtu.be/cbrvN3xTurk)
+[![Demo video](docs/screenshots/02-notification.png)](https://youtu.be/lwUlf4eXAk4)
 
 > Click the image above to watch the demo (~50s)
 

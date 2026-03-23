@@ -8,3 +8,4 @@ dist/
 /sessions/
 .idea/
 tools.yaml
+.playwright-mcp/
