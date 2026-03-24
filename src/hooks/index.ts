@@ -32,8 +32,9 @@ function extractToolContext(transcriptPath: string): { toolName?: string; toolIn
   try {
     const content = readFileSync(transcriptPath, 'utf-8');
     const lines = content.trim().split('\n');
-    // Read last few lines to find the tool_use block
-    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 10); i--) {
+    // Read last lines to find the tool_use block (needs >10 because tool_result, progress,
+    // and file-history-snapshot entries interleave between tool_use and end of transcript)
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 30); i--) {
       try {
         const entry = JSON.parse(lines[i]);
         // Look for assistant message with tool_use content
