@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
 import { loadConfig, saveConfig, ensureDataDir } from '../config/index.js';
-import type { ChannelConfig } from '../types.js';
+import type { ChannelConfig, CIConfig } from '../types.js';
 
 const CLAUDE_SETTINGS_FILE = join(homedir(), '.claude', 'settings.json');
 
@@ -110,6 +110,13 @@ export async function setup(options: {
   }
 
   config.channel = channel;
+
+  // CI/CD integration
+  const ci = await setupCI(config.ci);
+  if (ci) {
+    config.ci = ci;
+  }
+
   saveConfig(config);
   console.log('\nConfiguration saved to ~/.claude-pager/config.json');
 
@@ -243,6 +250,79 @@ async function testNtfy(ntfy: { server: string; topic: string; user?: string; pa
     console.error(String(err));
     return false;
   }
+}
+
+async function setupCI(current?: CIConfig): Promise<CIConfig | undefined> {
+  const defaultType = current?.type === 'gitlab' ? 'g' : current?.type === 'github' ? 'h' : 'n';
+  const ciType = await prompt('\nCI/CD integration: (g)itlab, (h)ub (GitHub), or (n)one?', defaultType);
+
+  if (ciType.startsWith('g')) {
+    return setupGitLabCI(current?.gitlab);
+  }
+  if (ciType.startsWith('h')) {
+    return setupGitHubCI(current?.github);
+  }
+  return undefined;
+}
+
+async function setupGitLabCI(
+  current?: { url: string; token: string },
+): Promise<CIConfig> {
+  const url = await prompt('GitLab server URL', current?.url || 'https://gitlab.com');
+  const token = await promptSecret('GitLab personal access token (scope: read_api)');
+
+  // Verify token
+  console.log('\nVerifying GitLab connection...');
+  try {
+    const res = await fetch(`${url}/api/v4/user`, {
+      headers: { 'PRIVATE-TOKEN': token || current?.token || '' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      const user = await res.json() as { username: string };
+      console.log(`GitLab: @${user.username}`);
+    } else {
+      console.log('Warning: could not verify token (check scope: read_api)');
+    }
+  } catch (err) {
+    console.log(`Warning: ${err}`);
+  }
+
+  return {
+    type: 'gitlab',
+    gitlab: { url, token: token || current?.token || '' },
+  };
+}
+
+async function setupGitHubCI(
+  current?: { token: string },
+): Promise<CIConfig> {
+  const token = await promptSecret('GitHub personal access token (scope: actions:read)');
+
+  // Verify token
+  console.log('\nVerifying GitHub connection...');
+  try {
+    const res = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `Bearer ${token || current?.token || ''}`,
+        'Accept': 'application/vnd.github+json',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (res.ok) {
+      const user = await res.json() as { login: string };
+      console.log(`GitHub: @${user.login}`);
+    } else {
+      console.log('Warning: could not verify token');
+    }
+  } catch (err) {
+    console.log(`Warning: ${err}`);
+  }
+
+  return {
+    type: 'github',
+    github: { token: token || current?.token || '' },
+  };
 }
 
 function installHooks(): void {
