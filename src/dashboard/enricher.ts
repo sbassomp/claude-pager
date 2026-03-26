@@ -1,8 +1,11 @@
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
 import { listPending } from '../sessions/events.js';
+import { loadConfig } from '../config/index.js';
 import { readTranscriptInfo } from './transcript.js';
 import { getGitStatus } from './git-status.js';
+import { getCIPipelines } from './ci-provider.js';
 import type { GitInfo } from './git-status.js';
+import type { BranchPipelines } from './ci-provider.js';
 
 export interface DashboardSession {
   sessionId: string;
@@ -27,6 +30,7 @@ export interface DashboardProject {
   name: string;
   path: string;
   sessions: DashboardSession[];
+  ci?: BranchPipelines;
 }
 
 export interface DashboardResponse {
@@ -34,10 +38,11 @@ export interface DashboardResponse {
   updatedAt: number;
 }
 
-export function getDashboardData(): DashboardResponse {
+export async function getDashboardData(): Promise<DashboardResponse> {
   cleanDeadSessions();
   const sessions = listSessions();
   const pending = listPending();
+  const config = loadConfig();
 
   const enriched: Array<DashboardSession & { cwd: string }> = sessions
     .filter(s => s.tmuxPane)
@@ -91,6 +96,17 @@ export function getDashboardData(): DashboardResponse {
     unknown: 4,
   };
 
+  // Fetch CI pipelines for each unique cwd (in parallel)
+  const uniqueCwds = Array.from(projectMap.keys());
+  const ciResults = new Map<string, BranchPipelines>();
+  if (config.ci) {
+    const ciPromises = uniqueCwds.map(async (cwd) => {
+      const pipelines = await getCIPipelines(cwd, config.ci);
+      ciResults.set(cwd, pipelines);
+    });
+    await Promise.all(ciPromises);
+  }
+
   const projects: DashboardProject[] = Array.from(projectMap.entries())
     .map(([path, sessions]) => ({
       name: path.split('/').pop() || path,
@@ -98,8 +114,8 @@ export function getDashboardData(): DashboardResponse {
       sessions: sessions
         .map(({ cwd: _cwd, ...rest }) => rest)
         .sort((a, b) => (stateOrder[a.state] ?? 5) - (stateOrder[b.state] ?? 5)),
+      ci: ciResults.get(path),
     }))
-    // Sort projects: those with active/waiting sessions first
     .sort((a, b) => {
       const aMin = Math.min(...a.sessions.map(s => stateOrder[s.state] ?? 5));
       const bMin = Math.min(...b.sessions.map(s => stateOrder[s.state] ?? 5));

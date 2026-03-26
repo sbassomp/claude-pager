@@ -101,6 +101,47 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       margin-left: auto;
     }
 
+    .ci-row {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+
+    .ci-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+
+    .ci-badge:hover { opacity: 0.8; }
+
+    .ci-badge.success { background: #0d2818; color: #3fb950; }
+    .ci-badge.failed { background: #490202; color: #f85149; }
+    .ci-badge.running { background: #0d419d; color: #58a6ff; animation: pulse 2s ease-in-out infinite; }
+    .ci-badge.pending { background: #3d2e00; color: #d29922; }
+    .ci-badge.canceled { background: #21262d; color: #8b949e; }
+    .ci-badge.unknown { background: #21262d; color: #484f58; }
+
+    .ci-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .ci-dot.success { background: #3fb950; }
+    .ci-dot.failed { background: #f85149; }
+    .ci-dot.running { background: #58a6ff; }
+    .ci-dot.pending { background: #d29922; }
+    .ci-dot.canceled { background: #8b949e; }
+    .ci-dot.unknown { background: #484f58; }
+
     .sessions {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
@@ -419,6 +460,25 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       \`;
     }
 
+    function renderPipeline(label, pipeline) {
+      if (!pipeline) return '';
+      const s = pipeline.status;
+      const dot = '<span class="ci-dot ' + s + '"></span>';
+      const text = label + ': ' + s;
+      if (pipeline.url) {
+        return '<a class="ci-badge ' + s + '" href="' + escapeHtml(pipeline.url) + '" target="_blank">' + dot + ' ' + text + '</a>';
+      }
+      return '<span class="ci-badge ' + s + '">' + dot + ' ' + text + '</span>';
+    }
+
+    function renderCI(ci) {
+      if (!ci) return '';
+      const main = renderPipeline('main', ci.main);
+      const staging = renderPipeline('staging', ci.staging);
+      if (!main && !staging) return '';
+      return '<div class="ci-row">' + main + staging + '</div>';
+    }
+
     function renderProject(p) {
       return \`
         <div class="project">
@@ -427,6 +487,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <span class="project-count">\${p.sessions.length} session\${p.sessions.length > 1 ? 's' : ''}</span>
             <span class="project-path">\${escapeHtml(p.path)}</span>
           </div>
+          \${renderCI(p.ci)}
           <div class="sessions">
             \${p.sessions.map(renderSession).join('')}
           </div>

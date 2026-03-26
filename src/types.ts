@@ -1,8 +1,15 @@
+export interface CIConfig {
+  type: 'gitlab' | 'github';
+  gitlab?: { url: string; token: string };
+  github?: { token: string };
+}
+
 export interface RelayConfig {
   port: number;
   channel: ChannelConfig;
   injector: 'auto' | 'tmux' | 'xdotool' | 'applescript';
   dataDir: string;
+  ci?: CIConfig;
 }
 
 export interface ChannelConfig {
