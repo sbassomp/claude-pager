@@ -6,6 +6,7 @@ import { addPending, listPending, removePending, resolveResponse } from '../sess
 import { getSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
+import { registerDashboardRoutes } from '../dashboard/routes.js';
 
 interface DaemonDeps {
   config: RelayConfig;
@@ -139,6 +140,8 @@ export async function createServer(deps: DaemonDeps) {
     cleanDeadSessions();
     return { sessions: listSessions() };
   });
+
+  registerDashboardRoutes(app);
 
   return app;
 }

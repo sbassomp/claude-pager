@@ -9,3 +9,4 @@ dist/
 .idea/
 tools.yaml
 .playwright-mcp/
+reddit-post.md
