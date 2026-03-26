@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { registerSession } from '../sessions/tracker.js';
 import { ensureDataDir } from '../config/index.js';
 import type { SessionInfo } from '../types.js';
@@ -28,16 +29,13 @@ function getActiveWindowId(): number | undefined {
   }
 }
 
-function extractToolContext(transcriptPath: string): { toolName?: string; toolInput?: string } {
+function findToolUseInFile(filePath: string, maxLines: number): { toolName?: string; toolInput?: string } | null {
   try {
-    const content = readFileSync(transcriptPath, 'utf-8');
+    const content = readFileSync(filePath, 'utf-8');
     const lines = content.trim().split('\n');
-    // Read last lines to find the tool_use block (needs >10 because tool_result, progress,
-    // and file-history-snapshot entries interleave between tool_use and end of transcript)
-    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 30); i--) {
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - maxLines); i--) {
       try {
         const entry = JSON.parse(lines[i]);
-        // Look for assistant message with tool_use content
         if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
           for (const block of entry.message.content) {
             if (block.type === 'tool_use') {
@@ -61,8 +59,33 @@ function extractToolContext(transcriptPath: string): { toolName?: string; toolIn
       }
     }
   } catch {
-    // transcript not readable
+    // file not readable
   }
+  return null;
+}
+
+function extractToolContext(transcriptPath: string): { toolName?: string; toolInput?: string } {
+  // Try the main transcript first
+  const result = findToolUseInFile(transcriptPath, 30);
+  if (result) return result;
+
+  // If not found, check the most recent subagent transcript
+  // (tool_use from subagents doesn't appear in the main transcript)
+  try {
+    const dir = transcriptPath.replace('.jsonl', '') + '/subagents';
+    const files = readdirSync(dir)
+      .filter(f => f.endsWith('.jsonl'))
+      .map(f => ({ name: f, mtime: statSync(join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+
+    for (const file of files.slice(0, 3)) {
+      const subResult = findToolUseInFile(join(dir, file.name), 15);
+      if (subResult) return subResult;
+    }
+  } catch {
+    // no subagents directory
+  }
+
   return {};
 }
 
