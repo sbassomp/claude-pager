@@ -427,13 +427,14 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         ? '<span class="needs-testing">needs testing</span>'
         : '';
 
-      const commitFlag = s.committed
+      const hasGit = s.git.branch !== 'unknown';
+      const commitFlag = hasGit ? (s.committed
         ? '<span class="flag ok">✓ committed</span>'
-        : '<span class="flag pending">○ uncommitted</span>';
+        : '<span class="flag pending">○ uncommitted</span>') : '';
 
-      const pushFlag = s.pushed
+      const pushFlag = hasGit ? (s.pushed
         ? '<span class="flag ok">✓ pushed</span>'
-        : '<span class="flag pending">○ unpushed</span>';
+        : '<span class="flag pending">○ unpushed</span>') : '';
 
       return \`
         <div class="card \${cardClass}">
@@ -442,7 +443,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <span class="badge \${s.state}">\${stateLabel(s.state)}</span>
           </div>
           \${pending}
-          <div class="git-row">
+          \${hasGit ? \`<div class="git-row">
             <span class="git-branch">\${escapeHtml(s.git.branch)}</span>
             \${gitStatus}
             \${unpushed}
@@ -451,7 +452,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           <div class="git-row">
             \${commitFlag}
             \${pushFlag}
-          </div>
+          </div>\` : ''}
           <div class="card-footer">
             <span>pane \${escapeHtml(s.tmuxPane)}</span>
             <span>\${timeAgo(s.lastActivity)}</span>
