@@ -44,6 +44,8 @@ export async function getDashboardData(): Promise<DashboardResponse> {
   const pending = listPending();
   const config = loadConfig();
 
+  const DAY_MS = 24 * 3600_000;
+
   const enriched: Array<DashboardSession & { cwd: string }> = sessions
     .filter(s => s.tmuxPane)
     .map(session => {
@@ -78,7 +80,9 @@ export async function getDashboardData(): Promise<DashboardResponse> {
         lastActivity: transcript.lastTimestamp || session.timestamp,
         cwd: session.cwd,
       };
-    });
+    })
+    // Filter out sessions with no transcript that are older than 24h (stale recovered sessions)
+    .filter(s => !(s.title === 'No transcript' && Date.now() - s.lastActivity > DAY_MS));
 
   // Group by project (cwd)
   const projectMap = new Map<string, Array<DashboardSession & { cwd: string }>>();
