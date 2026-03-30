@@ -398,6 +398,65 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       font-size: 13px;
     }
 
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+
+      header { flex-direction: column; align-items: flex-start; gap: 8px; }
+
+      .logo h1 { font-size: 18px; }
+
+      .sessions {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .project-header {
+        flex-wrap: wrap;
+      }
+
+      .project-path { display: none; }
+
+      .card { padding: 12px; }
+
+      .card-title { font-size: 13px; }
+
+      .action-btn {
+        padding: 8px 18px;
+        font-size: 13px;
+      }
+
+      .reply-input {
+        font-size: 13px;
+        padding: 8px 10px;
+      }
+
+      .ci-row { flex-wrap: wrap; gap: 6px; }
+
+      .pending-box { font-size: 11px; }
+
+      .pending-box code { font-size: 9px; }
+    }
+
+    @media (max-width: 480px) {
+      body { padding: 8px; }
+
+      .logo h1 { font-size: 16px; }
+
+      .badge { font-size: 9px; padding: 2px 6px; }
+
+      .git-row { flex-wrap: wrap; gap: 6px; }
+
+      .action-btn {
+        padding: 10px 20px;
+        font-size: 14px;
+      }
+
+      .action-btn.allow-all {
+        width: 100%;
+        text-align: center;
+      }
+    }
+
     .scanline {
       position: fixed;
       top: 0;
