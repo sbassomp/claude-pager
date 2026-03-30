@@ -1,6 +1,8 @@
 import type { PendingQuestion, RelayEvent } from '../types.js';
 
 const pending = new Map<string, PendingQuestion>();
+const resolved = new Map<string, number>(); // eventId → timestamp of resolution
+const RESOLVED_TTL_MS = 5 * 60 * 1000; // keep resolved events for 5 minutes
 let nextShortId = (Date.now() % 10000) + 1;
 let insertionOrder = 0;
 
@@ -22,7 +24,18 @@ export function getPending(eventId: string): PendingQuestion | undefined {
 
 export function removePending(eventId: string): void {
   pending.delete(eventId);
+  resolved.set(eventId, Date.now());
+  // Cleanup old resolved entries
+  const now = Date.now();
+  for (const [id, ts] of resolved) {
+    if (now - ts > RESOLVED_TTL_MS) resolved.delete(id);
+  }
 }
+
+export function isResolved(eventId: string): boolean {
+  return resolved.has(eventId);
+}
+
 
 const PENDING_TTL_MS = 30 * 60 * 1000; // 30 minutes
 

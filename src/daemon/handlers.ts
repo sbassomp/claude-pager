@@ -1,7 +1,7 @@
 import type { ChannelProvider, ChannelListeners, FreeMessage } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import type { SessionInfo } from '../types.js';
-import { resolveResponse, removePending } from '../sessions/events.js';
+import { resolveResponse, removePending, isResolved } from '../sessions/events.js';
 import { getSession, listSessions, cleanDeadSessions } from '../sessions/tracker.js';
 import { escapeHtml } from '../utils/html.js';
 
@@ -110,8 +110,15 @@ export function createChannelHandlers(
           removePending(question.event.id);
         }
 
+        // Check if the response targets an already-resolved event (late Telegram callback)
+        const uuidMatch = rawText.match(/^#([\w-]{8,})\s+/);
+        if (uuidMatch && isResolved(uuidMatch[1])) {
+          console.log('[daemon] Response to already-resolved event, discarding:', rawText.slice(0, 60));
+          return;
+        }
+
         // If the text looks like a response to an expired event, don't inject as free message
-        if (/^#[\w-]{8,}\s+/.test(rawText)) {
+        if (uuidMatch) {
           console.log('[daemon] Response to expired event, ignoring:', rawText.slice(0, 60));
           if (channel.sendRaw) await channel.sendRaw('Event expired. The permission prompt may have timed out.');
           return;
