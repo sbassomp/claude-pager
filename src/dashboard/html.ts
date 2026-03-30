@@ -659,7 +659,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     }
 
     fetchDashboard();
-    setInterval(fetchDashboard, 5000);
+    setInterval(fetchDashboard, 2000);
   </script>
 </body>
 </html>`;
