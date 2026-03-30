@@ -53,7 +53,10 @@ export async function getDashboardData(): Promise<DashboardResponse> {
     .map(session => {
       const transcript = readTranscriptInfo(session.sessionId, session.cwd);
       const git = getGitStatus(session.cwd);
-      const pendingQ = pending.find(p => p.event.sessionId === session.sessionId);
+      // Find pending question for this session — prioritize permission_prompt over idle_prompt
+      const sessionPending = pending.filter(p => p.event.sessionId === session.sessionId);
+      const pendingQ = sessionPending.find(p => p.event.type === 'permission_prompt')
+        || sessionPending[0];
 
       // State: pending question overrides transcript state
       let state: DashboardSession['state'] = transcript.state;
