@@ -80,7 +80,7 @@ export async function getDashboardData(): Promise<DashboardResponse> {
           agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
         } : undefined,
         git,
-        needsTesting: git.modifiedFiles > 0 || git.unpushedCommits > 0,
+        needsTesting: false, // computed at project level after CI fetch
         committed: git.modifiedFiles === 0 || transcript.recentCommit,
         pushed: git.unpushedCommits === 0 || transcript.recentPush,
         tmuxPane: session.tmuxPane || '',
@@ -119,14 +119,30 @@ export async function getDashboardData(): Promise<DashboardResponse> {
   }
 
   const projects: DashboardProject[] = Array.from(projectMap.entries())
-    .map(([path, sessions]) => ({
-      name: path.split('/').pop() || path,
-      path,
-      sessions: sessions
-        .map(({ cwd: _cwd, ...rest }) => rest)
-        .sort((a, b) => (stateOrder[a.state] ?? 5) - (stateOrder[b.state] ?? 5)),
-      ci: ciResults.get(path),
-    }))
+    .map(([path, sessions]) => {
+      const ci = ciResults.get(path);
+      const git = sessions[0]?.git;
+
+      // needsTesting logic:
+      // - CI failed on any branch → needs testing
+      // - Has unpushed commits (CI hasn't seen this code yet) → needs testing
+      // - No CI configured but has uncommitted changes → needs testing (fallback)
+      const ciFailed = ci?.main?.status === 'failed' || ci?.staging?.status === 'failed';
+      const ciRunning = ci?.main?.status === 'running' || ci?.staging?.status === 'running';
+      const hasUnpushed = git ? git.unpushedCommits > 0 : false;
+      const hasCI = !!(ci?.main || ci?.staging);
+      const needsTesting = ciFailed || hasUnpushed || (!hasCI && git ? git.modifiedFiles > 0 : false);
+
+      return {
+        name: path.split('/').pop() || path,
+        path,
+        sessions: sessions
+          .map(({ cwd: _cwd, ...rest }) => ({ ...rest, needsTesting }))
+          .sort((a, b) => (stateOrder[a.state] ?? 5) - (stateOrder[b.state] ?? 5)),
+        ci,
+        ciRunning,
+      };
+    })
     .sort((a, b) => {
       const aMin = Math.min(...a.sessions.map(s => stateOrder[s.state] ?? 5));
       const bMin = Math.min(...b.sessions.map(s => stateOrder[s.state] ?? 5));
