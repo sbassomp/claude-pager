@@ -73,6 +73,15 @@ export function createChannelHandlers(
 
       console.log(`[daemon] Received response from channel: "${rawText}"`);
       try {
+        // Early check: discard late responses to already-resolved or expired events
+        const uuidMatch = rawText.match(/^#([\w-]{8,})\s+/);
+        if (uuidMatch) {
+          if (isResolved(uuidMatch[1])) {
+            console.log('[daemon] Response to already-resolved event, discarding:', rawText.slice(0, 60));
+            return;
+          }
+        }
+
         const resolved = resolveResponse(rawText);
 
         if (resolved) {
@@ -110,14 +119,7 @@ export function createChannelHandlers(
           removePending(question.event.id);
         }
 
-        // Check if the response targets an already-resolved event (late Telegram callback)
-        const uuidMatch = rawText.match(/^#([\w-]{8,})\s+/);
-        if (uuidMatch && isResolved(uuidMatch[1])) {
-          console.log('[daemon] Response to already-resolved event, discarding:', rawText.slice(0, 60));
-          return;
-        }
-
-        // If the text looks like a response to an expired event, don't inject as free message
+        // If the text looks like a response to an expired/unknown event, don't inject as free message
         if (uuidMatch) {
           console.log('[daemon] Response to expired event, ignoring:', rawText.slice(0, 60));
           if (channel.sendRaw) await channel.sendRaw('Event expired. The permission prompt may have timed out.');
