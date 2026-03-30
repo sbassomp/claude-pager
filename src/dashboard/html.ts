@@ -486,7 +486,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
         pending = \`
           <div class="pending-box">
-            <span class="ago">\${q.agoSeconds}s ago</span>
+            <span class="ago">\${timeAgo(Date.now() - q.agoSeconds * 1000)}</span>
             \${toolInfo}
             \${actions}
           </div>
