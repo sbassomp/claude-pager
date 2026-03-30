@@ -12,6 +12,7 @@ export interface DashboardSession {
   title: string;
   state: 'working' | 'waiting_input' | 'waiting_permission' | 'idle' | 'unknown';
   pendingQuestion?: {
+    eventId: string;
     shortId: string;
     type: string;
     message: string;
@@ -66,6 +67,7 @@ export async function getDashboardData(): Promise<DashboardResponse> {
         title: transcript.title,
         state,
         pendingQuestion: pendingQ ? {
+          eventId: pendingQ.event.id,
           shortId: pendingQ.shortId,
           type: pendingQ.event.type,
           message: pendingQ.event.message.slice(0, 200),

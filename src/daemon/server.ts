@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import type { RelayConfig, RelayEvent } from '../types.js';
 import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
-import { addPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
+import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
@@ -134,6 +134,50 @@ export async function createServer(deps: DaemonDeps) {
   app.get('/api/v1/pending', async () => {
     return { pending: listPending() };
   });
+
+  // Respond to a specific event by ID (used by dashboard)
+  app.post<{ Body: { eventId: string; response: string } }>(
+    '/api/v1/respond-to',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['eventId', 'response'],
+          properties: {
+            eventId: { type: 'string', minLength: 1 },
+            response: { type: 'string', minLength: 1 },
+          },
+        } as const,
+      },
+    },
+    async (request, reply) => {
+      const { eventId, response } = request.body;
+      const question = getPending(eventId);
+      if (!question) {
+        return reply.status(404).send({ error: 'Event not found or expired' });
+      }
+
+      let session = getSession(question.event.sessionId);
+      if (!session) {
+        cleanDeadSessions();
+        const byCwd = listSessions().filter(s =>
+          s.tmuxPane && s.cwd === question.event.project,
+        );
+        if (byCwd.length === 1) session = byCwd[0];
+      }
+      if (!session) {
+        removePending(eventId);
+        return reply.status(410).send({ error: 'Session no longer active' });
+      }
+
+      const ok = await injector.sendResponse(session, response, question.event.type);
+      if (!ok) {
+        return reply.status(500).send({ error: 'Failed to inject response' });
+      }
+      removePending(eventId);
+      return { ok: true, eventId, injected: true };
+    },
+  );
 
   // List active sessions
   app.get('/api/v1/sessions', async () => {

@@ -257,6 +257,47 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       float: right;
     }
 
+    .action-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .action-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .action-btn:hover { opacity: 0.85; }
+    .action-btn:active { transform: scale(0.96); }
+
+    .action-btn.allow {
+      background: #238636;
+      color: #ffffff;
+    }
+
+    .action-btn.deny {
+      background: #da3633;
+      color: #ffffff;
+    }
+
+    .action-btn.allow-all {
+      background: #1f6feb;
+      color: #ffffff;
+      margin-left: auto;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
     .git-row {
       display: flex;
       align-items: center;
@@ -366,6 +407,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       <h1>claude-pager<span class="cursor"></span></h1>
     </div>
     <div class="meta">
+      <button class="action-btn allow-all" id="allowAllBtn" style="display:none" onclick="allowAll()">Allow All</button>
       <span class="status-dot connected" id="statusDot"></span>
       <span id="lastUpdate">connecting...</span>
     </div>
@@ -412,6 +454,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           <span class="ago">\${s.pendingQuestion.agoSeconds}s ago</span>
           \${s.pendingQuestion.toolName ? '<span class="tool">' + escapeHtml(s.pendingQuestion.toolName) + '</span> — ' : ''}
           \${escapeHtml(s.pendingQuestion.message.slice(0, 120))}
+          <div class="action-row">
+            <button class="action-btn allow" onclick="respondTo('\${s.pendingQuestion.eventId}', 'allow', this)">✓ Allow</button>
+            <button class="action-btn deny" onclick="respondTo('\${s.pendingQuestion.eventId}', 'deny', this)">✗ Deny</button>
+          </div>
         </div>
       \` : '';
 
@@ -496,6 +542,16 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       \`;
     }
 
+    function countPending(data) {
+      let count = 0;
+      for (const p of data.projects) {
+        for (const s of p.sessions) {
+          if (s.pendingQuestion && s.pendingQuestion.type === 'permission_prompt') count++;
+        }
+      }
+      return count;
+    }
+
     function render(data) {
       const container = document.getElementById('projects');
       if (!data.projects || data.projects.length === 0) {
@@ -505,9 +561,56 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <p>Start Claude Code in tmux and sessions will appear here.</p>
           </div>
         \`;
+        document.getElementById('allowAllBtn').style.display = 'none';
         return;
       }
+
+      const pendingCount = countPending(data);
+      const allowAllBtn = document.getElementById('allowAllBtn');
+      if (pendingCount > 1) {
+        allowAllBtn.style.display = 'inline-block';
+        allowAllBtn.textContent = 'Allow All (' + pendingCount + ')';
+      } else {
+        allowAllBtn.style.display = 'none';
+      }
+
       container.innerHTML = data.projects.map(renderProject).join('');
+    }
+
+    async function respondTo(eventId, response, btn) {
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/v1/respond-to', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId, response }),
+        });
+        if (res.ok) {
+          fetchDashboard();
+        } else {
+          const err = await res.json();
+          console.error('respond-to failed:', err);
+        }
+      } catch (e) {
+        console.error('respond-to error:', e);
+      }
+      if (btn) btn.disabled = false;
+    }
+
+    async function allowAll() {
+      if (!data) return;
+      const pending = [];
+      for (const p of data.projects) {
+        for (const s of p.sessions) {
+          if (s.pendingQuestion && s.pendingQuestion.type === 'permission_prompt') {
+            pending.push(s.pendingQuestion);
+          }
+        }
+      }
+      for (const q of pending) {
+        await respondTo(q.eventId, 'allow', null);
+      }
+      fetchDashboard();
     }
 
     async function fetchDashboard() {
