@@ -298,6 +298,22 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       cursor: not-allowed;
     }
 
+    .reply-input {
+      flex: 1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #0d1117;
+      color: #c9d1d9;
+      outline: none;
+    }
+
+    .reply-input:focus {
+      border-color: #58a6ff;
+    }
+
     .git-row {
       display: flex;
       align-items: center;
@@ -449,17 +465,33 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       const isActive = s.state === 'working';
       const cardClass = isStale ? 'stale' : isAlert ? 'alert' : isActive ? 'active' : '';
 
-      const pending = s.pendingQuestion ? \`
-        <div class="pending-box">
-          <span class="ago">\${s.pendingQuestion.agoSeconds}s ago</span>
-          \${s.pendingQuestion.toolName ? '<span class="tool">' + escapeHtml(s.pendingQuestion.toolName) + '</span> — ' : ''}
-          \${escapeHtml(s.pendingQuestion.message.slice(0, 120))}
-          <div class="action-row">
-            <button class="action-btn allow" onclick="respondTo('\${s.pendingQuestion.eventId}', 'allow', this)">✓ Allow</button>
-            <button class="action-btn deny" onclick="respondTo('\${s.pendingQuestion.eventId}', 'deny', this)">✗ Deny</button>
+      let pending = '';
+      if (s.pendingQuestion) {
+        const q = s.pendingQuestion;
+        const isPermission = q.type === 'permission_prompt';
+        const toolInfo = q.toolName
+          ? '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
+            (q.toolInput ? '<br><code style="font-size:10px;color:#8b949e;word-break:break-all">' + escapeHtml(q.toolInput.slice(0, 200)) + '</code>' : '')
+          : escapeHtml(q.message.slice(0, 150));
+
+        const actions = isPermission
+          ? \`<div class="action-row">
+              <button class="action-btn allow" onclick="respondTo('\${q.eventId}', 'allow', this)">✓ Allow</button>
+              <button class="action-btn deny" onclick="respondTo('\${q.eventId}', 'deny', this)">✗ Deny</button>
+            </div>\`
+          : \`<div class="action-row" style="align-items:center">
+              <input type="text" class="reply-input" id="reply-\${q.eventId}" placeholder="Type a reply..." onkeydown="if(event.key==='Enter')respondTo('\${q.eventId}',this.value,this)">
+              <button class="action-btn allow" onclick="respondTo('\${q.eventId}',document.getElementById('reply-\${q.eventId}').value,this)">Send</button>
+            </div>\`;
+
+        pending = \`
+          <div class="pending-box">
+            <span class="ago">\${q.agoSeconds}s ago</span>
+            \${toolInfo}
+            \${actions}
           </div>
-        </div>
-      \` : '';
+        \`;
+      }
 
       const gitStatus = s.git.modifiedFiles > 0
         ? '<span class="git-modified">' + s.git.modifiedFiles + ' modified</span>'
