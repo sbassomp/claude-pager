@@ -59,11 +59,18 @@ export async function getDashboardData(): Promise<DashboardResponse> {
         sessionPending.find(p => p.event.type === 'permission_prompt')
         || sessionPending[0];
 
-      // If the transcript has progressed past the pending question, it was answered directly
-      // in the terminal — remove stale pending questions
-      if (pendingQ && transcript.lastTimestamp > pendingQ.notifiedAt + 3000) {
-        removePending(pendingQ.event.id);
-        pendingQ = undefined;
+      // Auto-clear stale pending questions that were answered directly in the terminal
+      if (pendingQ) {
+        const isStale =
+          // Permission prompt: if transcript progressed after notification, it was answered
+          (pendingQ.event.type === 'permission_prompt' && transcript.lastTimestamp > pendingQ.notifiedAt + 2000) ||
+          // Idle prompt: if Claude is now working again, user already replied
+          (pendingQ.event.type === 'idle_prompt' && transcript.state === 'working' && transcript.lastTimestamp > pendingQ.notifiedAt);
+
+        if (isStale) {
+          removePending(pendingQ.event.id);
+          pendingQ = undefined;
+        }
       }
 
       // State: pending question overrides transcript state
