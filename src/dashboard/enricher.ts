@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
 import { listPending, removePending } from '../sessions/events.js';
 import { loadConfig } from '../config/index.js';
@@ -6,6 +7,22 @@ import { getGitStatus } from './git-status.js';
 import { getCIPipelines } from './ci-provider.js';
 import type { GitInfo } from './git-status.js';
 import type { BranchPipelines } from './ci-provider.js';
+
+// Track last title set per pane to avoid unnecessary tmux calls
+const lastPaneTitle = new Map<string, string>();
+
+function updatePaneTitle(tmuxPane: string, title: string): void {
+  // Truncate to 30 chars for tab readability
+  const short = title.length > 30 ? title.slice(0, 28) + '..' : title;
+  if (lastPaneTitle.get(tmuxPane) === short) return;
+
+  try {
+    execFileSync('tmux', ['rename-window', '-t', tmuxPane, short], { timeout: 1000 });
+    lastPaneTitle.set(tmuxPane, short);
+  } catch {
+    // tmux not available or pane not found
+  }
+}
 
 export interface DashboardSession {
   sessionId: string;
@@ -79,6 +96,12 @@ export async function getDashboardData(): Promise<DashboardResponse> {
         state = pendingQ.event.type === 'permission_prompt'
           ? 'waiting_permission'
           : 'waiting_input';
+      }
+
+      // Update tmux pane title with the session title
+      if (session.tmuxPane && transcript.title && transcript.title !== 'No transcript') {
+        const projectName = session.cwd.split('/').pop() || '';
+        updatePaneTitle(session.tmuxPane, `${projectName}: ${transcript.title}`);
       }
 
       return {
