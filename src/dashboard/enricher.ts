@@ -1,5 +1,5 @@
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
-import { listPending } from '../sessions/events.js';
+import { listPending, removePending } from '../sessions/events.js';
 import { loadConfig } from '../config/index.js';
 import { readTranscriptInfo } from './transcript.js';
 import { getGitStatus } from './git-status.js';
@@ -55,8 +55,16 @@ export async function getDashboardData(): Promise<DashboardResponse> {
       const git = getGitStatus(session.cwd);
       // Find pending question for this session — prioritize permission_prompt over idle_prompt
       const sessionPending = pending.filter(p => p.event.sessionId === session.sessionId);
-      const pendingQ = sessionPending.find(p => p.event.type === 'permission_prompt')
+      let pendingQ: (typeof sessionPending)[number] | undefined =
+        sessionPending.find(p => p.event.type === 'permission_prompt')
         || sessionPending[0];
+
+      // If the transcript has progressed past the pending question, it was answered directly
+      // in the terminal — remove stale pending questions
+      if (pendingQ && transcript.lastTimestamp > pendingQ.notifiedAt + 3000) {
+        removePending(pendingQ.event.id);
+        pendingQ = undefined;
+      }
 
       // State: pending question overrides transcript state
       let state: DashboardSession['state'] = transcript.state;
