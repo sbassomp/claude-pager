@@ -114,6 +114,18 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     .pin-btn:hover { opacity: 0.7; }
     .pin-btn.pinned { opacity: 1; }
 
+    .dismiss-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      opacity: 0.25;
+      transition: opacity 0.2s;
+      padding: 2px 4px;
+    }
+
+    .dismiss-btn:hover { opacity: 0.8; color: #f85149; }
+
     .ci-row {
       display: flex;
       gap: 12px;
@@ -664,6 +676,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           <div class="card-header">
             <span class="card-title" id="\${titleId}">\${escapeHtml(s.title)}</span>
             <span class="badge \${s.state}">\${stateLabel(s.state)}</span>
+            <button class="dismiss-btn" onclick="dismissSession('\${s.sessionId}')" title="Dismiss session">🗑</button>
           </div>
           \${expandBtn}
           \${pending}
@@ -774,6 +787,19 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         console.error('respond-to error:', e);
       }
       if (btn) btn.disabled = false;
+    }
+
+    async function dismissSession(sessionId) {
+      try {
+        await fetch('/api/v1/dismiss-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+        });
+        fetchDashboard();
+      } catch (e) {
+        console.error('dismiss error:', e);
+      }
     }
 
     async function sendToSession(sessionId, text, btn) {

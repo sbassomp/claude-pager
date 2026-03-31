@@ -20,6 +20,13 @@ export function registerSession(info: SessionInfo): void {
   writeFileSync(file, JSON.stringify(info, null, 2) + '\n');
 }
 
+export function removeSession(sessionId: string): boolean {
+  if (!isValidSessionId(sessionId)) return false;
+  const file = join(sessionsDir(), `${sessionId}.json`);
+  if (!existsSync(file)) return false;
+  try { unlinkSync(file); return true; } catch { return false; }
+}
+
 export function getSession(sessionId: string): SessionInfo | null {
   if (!isValidSessionId(sessionId)) return null;
   const file = join(sessionsDir(), `${sessionId}.json`);

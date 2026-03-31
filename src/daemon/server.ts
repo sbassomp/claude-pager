@@ -3,7 +3,7 @@ import type { RelayConfig, RelayEvent } from '../types.js';
 import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
-import { getSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
+import { getSession, removeSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
@@ -215,6 +215,28 @@ export async function createServer(deps: DaemonDeps) {
         return reply.status(500).send({ error: 'Failed to inject text' });
       }
       return { ok: true, sessionId, injected: true };
+    },
+  );
+
+  // Dismiss a session (used by dashboard)
+  app.post<{ Body: { sessionId: string } }>(
+    '/api/v1/dismiss-session',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['sessionId'],
+          properties: { sessionId: { type: 'string', minLength: 1 } },
+        } as const,
+      },
+    },
+    async (request, reply) => {
+      const { sessionId } = request.body;
+      const removed = removeSession(sessionId);
+      if (!removed) {
+        return reply.status(404).send({ error: 'Session not found' });
+      }
+      return { ok: true, sessionId };
     },
   );
 
