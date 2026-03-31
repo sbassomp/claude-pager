@@ -179,6 +179,41 @@ export async function createServer(deps: DaemonDeps) {
     },
   );
 
+  // Send text directly to a session (used by dashboard for idle sessions)
+  app.post<{ Body: { sessionId: string; text: string } }>(
+    '/api/v1/send-to',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['sessionId', 'text'],
+          properties: {
+            sessionId: { type: 'string', minLength: 1 },
+            text: { type: 'string', minLength: 1 },
+          },
+        } as const,
+      },
+    },
+    async (request, reply) => {
+      const { sessionId, text } = request.body;
+      let session = getSession(sessionId);
+      if (!session) {
+        cleanDeadSessions();
+        const all = listSessions().filter(s => s.sessionId === sessionId);
+        if (all.length === 1) session = all[0];
+      }
+      if (!session) {
+        return reply.status(404).send({ error: 'Session not found' });
+      }
+
+      const ok = await injector.sendResponse(session, text, 'idle_prompt');
+      if (!ok) {
+        return reply.status(500).send({ error: 'Failed to inject text' });
+      }
+      return { ok: true, sessionId, injected: true };
+    },
+  );
+
   // List active sessions
   app.get('/api/v1/sessions', async () => {
     cleanDeadSessions();

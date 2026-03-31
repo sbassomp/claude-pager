@@ -624,6 +624,14 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           : '<span class="flag pending">○ unpush</span>');
       }
 
+      // Show reply input for idle sessions without a pending question
+      const idleInput = (!s.pendingQuestion && (s.state === 'idle' || s.state === 'unknown'))
+        ? \`<div class="action-row" style="margin-top:6px">
+            <input type="text" class="reply-input" id="idle-\${s.sessionId}" placeholder="Send a message..." onkeydown="if(event.key==='Enter')sendToSession('\${s.sessionId}',this.value,this)">
+            <button class="action-btn allow" onclick="sendToSession('\${s.sessionId}',document.getElementById('idle-\${s.sessionId}').value,this)">Send</button>
+          </div>\`
+        : '';
+
       return \`
         <div class="card \${cardClass}">
           <div class="card-header">
@@ -631,6 +639,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <span class="badge \${s.state}">\${stateLabel(s.state)}</span>
           </div>
           \${pending}
+          \${idleInput}
           <div class="card-footer">
             \${gitParts.join(' ')}
             <span class="spacer"></span>
@@ -735,6 +744,27 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         }
       } catch (e) {
         console.error('respond-to error:', e);
+      }
+      if (btn) btn.disabled = false;
+    }
+
+    async function sendToSession(sessionId, text, btn) {
+      if (!text || !text.trim()) return;
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/v1/send-to', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, text: text.trim() }),
+        });
+        if (res.ok) {
+          fetchDashboard();
+        } else {
+          const err = await res.json();
+          console.error('send-to failed:', err);
+        }
+      } catch (e) {
+        console.error('send-to error:', e);
       }
       if (btn) btn.disabled = false;
     }
