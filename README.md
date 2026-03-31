@@ -27,9 +27,12 @@ Get paged on your phone when Claude Code needs input. Reply from Telegram or ntf
 
 ## Features
 
+- **Web dashboard** — live view of all sessions at `http://localhost:17380/dashboard`, with Allow/Deny buttons, text replies, CI/CD status, and git info
 - **Multi-session** — run N Claude Code instances in tmux, responses route to the correct pane
 - **Telegram** — inline keyboards (Allow/Deny), reply-to-message routing, voice transcription (Whisper)
 - **ntfy** — self-hosted or ntfy.sh, mobile push notifications
+- **CI/CD integration** — GitLab and GitHub pipeline status per project (main/staging)
+- **Smart tmux titles** — terminal tabs auto-update with the current session topic
 - **Session recovery** — `claude-pager recover` detects existing Claude sessions in tmux
 - **Smart routing** — `#id response` for explicit targeting, auto-route for single session, session picker for ambiguous cases
 - **Fallback by project** — if a session UUID is no longer registered, matches by `cwd` (project directory)
@@ -137,6 +140,22 @@ claude-pager stop             # stop the daemon
 - If only one question is pending, any reply routes to it
 - `allow` / `deny` auto-route to the most recent permission prompt
 
+## Web Dashboard
+
+Open `http://127.0.0.1:17380/dashboard` in your browser. The dashboard shows:
+
+- All active sessions grouped by project
+- **Allow/Deny buttons** for permission prompts — respond without switching to Telegram
+- **Text input** for idle sessions — send a message directly to any Claude instance
+- **CI/CD pipeline status** per project (GitLab / GitHub Actions)
+- **Git status** — branch, modified files, unpushed commits, committed/pushed flags
+- **"Needs Testing"** badge when CI fails or code is unpushed
+- **Pin projects** to lock their dashboard position
+- **Expandable titles** — click "..." to see the full message
+- **Dismiss button** (🗑) to remove stale sessions
+- Auto-refresh every 2 seconds
+- tmux tab titles auto-update with the current session topic
+
 ## Configuration
 
 `~/.claude-pager/config.json`:
@@ -160,6 +179,10 @@ claude-pager stop             # stop the daemon
 | `port` | `17380` | Daemon HTTP port (localhost only) |
 | `channel.type` | `"ntfy"` | `"ntfy"` or `"telegram"` |
 | `injector` | `"auto"` | `"auto"`, `"tmux"`, or `"xdotool"` |
+| `ci.type` | — | `"gitlab"` or `"github"` (optional) |
+| `ci.gitlab.url` | — | GitLab server URL |
+| `ci.gitlab.token` | — | Personal access token (scope: `read_api`) |
+| `ci.github.token` | — | Personal access token (scope: `actions:read`) |
 
 The hook port can be overridden with `CLAUDE_PAGER_PORT` environment variable.
 
@@ -178,6 +201,7 @@ src/
 ├── daemon/            # HTTP server + response routing
 │   ├── server.ts      # Fastify routes with JSON Schema validation
 │   └── handlers.ts    # Channel listener logic (routing, picker)
+├── dashboard/         # Web dashboard (enricher, transcript, git, CI, HTML)
 ├── sessions/          # Session tracking + pending question store
 ├── hooks/             # Claude Code hook entry point
 ├── utils/             # Shared utilities (html, json, validation)

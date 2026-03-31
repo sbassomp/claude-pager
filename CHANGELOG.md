@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.2 (2026-03-31)
+
+### Dashboard Improvements
+
+- **Send messages to idle sessions** directly from the dashboard — no need to wait for idle_prompt
+- **Expandable titles** — long messages truncated to 2 lines with "..." button to expand
+- **Dismiss button** (🗑) to remove stale sessions manually
+- **tmux tab titles** auto-update with the current session topic (works with Kitty, iTerm2, etc.)
+- Auto-enable tmux `set-titles` on `claude-pager run`
+- Skip DOM refresh while user is typing in an input field
+- Dashboard refresh rate increased to 2 seconds
+
+### Performance
+
+- **Telegram notifications sent in background** — hook response is immediate, no longer blocked by Telegram API latency
+
+### Bug Fixes
+
+- Better stale pending detection — check transcript state and progression
+- Human-readable time for pending age (e.g., "6m ago" instead of "378s ago")
+
 ## 0.2.0 (2026-03-31)
 
 ### Web Dashboard
