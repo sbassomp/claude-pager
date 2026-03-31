@@ -101,6 +101,19 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       margin-left: auto;
     }
 
+    .pin-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      opacity: 0.3;
+      transition: opacity 0.2s;
+      padding: 2px 4px;
+    }
+
+    .pin-btn:hover { opacity: 0.7; }
+    .pin-btn.pinned { opacity: 1; }
+
     .ci-row {
       display: flex;
       gap: 12px;
@@ -492,6 +505,43 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
   <script>
     let data = null;
 
+    function getPinnedOrder() {
+      try { return JSON.parse(localStorage.getItem('dashboard-pin-order') || '[]'); }
+      catch { return []; }
+    }
+
+    function savePinnedOrder(order) {
+      localStorage.setItem('dashboard-pin-order', JSON.stringify(order));
+    }
+
+    function togglePin(name) {
+      const order = getPinnedOrder();
+      const idx = order.indexOf(name);
+      if (idx >= 0) {
+        order.splice(idx, 1);
+      } else {
+        order.push(name);
+      }
+      savePinnedOrder(order);
+      if (data) render(data);
+    }
+
+    function sortProjects(projects) {
+      const pinned = getPinnedOrder();
+      return [...projects].sort((a, b) => {
+        const aPin = pinned.indexOf(a.name);
+        const bPin = pinned.indexOf(b.name);
+        const aIsPinned = aPin >= 0;
+        const bIsPinned = bPin >= 0;
+        // Pinned projects first, in their pinned order
+        if (aIsPinned && bIsPinned) return aPin - bPin;
+        if (aIsPinned) return -1;
+        if (bIsPinned) return 1;
+        // Unpinned: keep the original sort (by state)
+        return 0;
+      });
+    }
+
     function escapeHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
@@ -618,9 +668,11 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     }
 
     function renderProject(p) {
+      const isPinned = getPinnedOrder().includes(p.name);
       return \`
         <div class="project">
           <div class="project-header">
+            <button class="pin-btn \${isPinned ? 'pinned' : ''}" onclick="togglePin('\${escapeHtml(p.name)}')" title="\${isPinned ? 'Unpin' : 'Pin'}">\${isPinned ? '📌' : '📌'}</button>
             <h2>\${escapeHtml(p.name)}</h2>
             <span class="project-count">\${p.sessions.length} session\${p.sessions.length > 1 ? 's' : ''}</span>
             <span class="project-path">\${escapeHtml(p.path)}</span>
@@ -665,7 +717,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         allowAllBtn.style.display = 'none';
       }
 
-      container.innerHTML = data.projects.map(renderProject).join('');
+      container.innerHTML = sortProjects(data.projects).map(renderProject).join('');
     }
 
     async function respondTo(eventId, response, btn) {
