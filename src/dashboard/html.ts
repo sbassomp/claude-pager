@@ -389,10 +389,15 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     .card-footer {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin-top: 10px;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
       font-size: 10px;
       color: #484f58;
+    }
+
+    .card-footer .spacer {
+      margin-left: auto;
     }
 
     .empty {
@@ -602,26 +607,22 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         \`;
       }
 
-      const gitStatus = s.git.modifiedFiles > 0
-        ? '<span class="git-modified">' + s.git.modifiedFiles + ' modified</span>'
-        : '<span class="git-clean">clean</span>';
-
-      const unpushed = s.git.unpushedCommits > 0
-        ? '<span class="git-unpushed">' + s.git.unpushedCommits + ' unpushed</span>'
-        : '';
-
-      const testing = s.needsTesting
-        ? '<span class="needs-testing">needs testing</span>'
-        : '';
-
       const hasGit = s.git.branch !== 'unknown';
-      const commitFlag = hasGit ? (s.committed
-        ? '<span class="flag ok">✓ committed</span>'
-        : '<span class="flag pending">○ uncommitted</span>') : '';
 
-      const pushFlag = hasGit ? (s.pushed
-        ? '<span class="flag ok">✓ pushed</span>'
-        : '<span class="flag pending">○ unpushed</span>') : '';
+      const gitParts = [];
+      if (hasGit) {
+        gitParts.push('<span class="git-branch">' + escapeHtml(s.git.branch) + '</span>');
+        gitParts.push(s.git.modifiedFiles > 0
+          ? '<span class="git-modified">' + s.git.modifiedFiles + ' mod</span>'
+          : '<span class="git-clean">clean</span>');
+        if (s.git.unpushedCommits > 0) gitParts.push('<span class="git-unpushed">' + s.git.unpushedCommits + ' unpush</span>');
+        gitParts.push(s.committed
+          ? '<span class="flag ok">✓ commit</span>'
+          : '<span class="flag pending">○ uncommit</span>');
+        gitParts.push(s.pushed
+          ? '<span class="flag ok">✓ push</span>'
+          : '<span class="flag pending">○ unpush</span>');
+      }
 
       return \`
         <div class="card \${cardClass}">
@@ -630,17 +631,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <span class="badge \${s.state}">\${stateLabel(s.state)}</span>
           </div>
           \${pending}
-          \${hasGit ? \`<div class="git-row">
-            <span class="git-branch">\${escapeHtml(s.git.branch)}</span>
-            \${gitStatus}
-            \${unpushed}
-            \${testing}
-          </div>
-          <div class="git-row">
-            \${commitFlag}
-            \${pushFlag}
-          </div>\` : ''}
           <div class="card-footer">
+            \${gitParts.join(' ')}
+            <span class="spacer"></span>
             <span>pane \${escapeHtml(s.tmuxPane)}</span>
             <span>\${timeAgo(s.lastActivity)}</span>
           </div>
@@ -663,12 +656,16 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       if (!ci) return '';
       const main = renderPipeline('main', ci.main);
       const staging = renderPipeline('staging', ci.staging);
-      if (!main && !staging) return '';
-      return '<div class="ci-row">' + main + staging + '</div>';
+      return main + staging;
     }
 
     function renderProject(p) {
       const isPinned = getPinnedOrder().includes(p.name);
+      const anyNeedsTesting = p.sessions.some(s => s.needsTesting);
+      const testBadge = anyNeedsTesting ? '<span class="needs-testing">needs testing</span>' : '';
+      const ciBadges = renderCI(p.ci);
+      const infoRow = (ciBadges || testBadge) ? '<div class="ci-row">' + ciBadges + testBadge + '</div>' : '';
+
       return \`
         <div class="project">
           <div class="project-header">
@@ -677,7 +674,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <span class="project-count">\${p.sessions.length} session\${p.sessions.length > 1 ? 's' : ''}</span>
             <span class="project-path">\${escapeHtml(p.path)}</span>
           </div>
-          \${renderCI(p.ci)}
+          \${infoRow}
           <div class="sessions">
             \${p.sessions.map(renderSession).join('')}
           </div>
