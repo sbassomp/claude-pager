@@ -714,6 +714,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         allowAllBtn.style.display = 'none';
       }
 
+      // Skip DOM update if user is typing in an input field
+      if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
       container.innerHTML = sortProjects(data.projects).map(renderProject).join('');
     }
 
