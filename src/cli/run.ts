@@ -17,6 +17,14 @@ export function run(args: string[]): void {
     return;
   }
 
+  // Ensure tmux propagates window titles to the terminal (Kitty, etc.)
+  try {
+    execFileSync('tmux', ['set-option', '-g', 'set-titles', 'on'], { timeout: 1000 });
+    execFileSync('tmux', ['set-option', '-g', 'set-titles-string', '#W'], { timeout: 1000 });
+  } catch {
+    // tmux not running yet — options will be set after session creation
+  }
+
   console.log(`Launching Claude Code in tmux session "${sessionName}"...`);
 
   try {
