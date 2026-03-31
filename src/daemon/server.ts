@@ -84,13 +84,17 @@ export async function createServer(deps: DaemonDeps) {
       };
 
       const shortId = addPending(event);
-      const result = await channel.send(event, shortId);
-      if (result.success) {
-        return { ok: true, eventId: event.id, shortId };
-      }
 
-      removePending(event.id);
-      return reply.status(502).send({ error: `Channel send failed: ${result.error}` });
+      // Send to channel in background — don't block the hook response
+      channel.send(event, shortId).then(result => {
+        if (!result.success) {
+          console.error(`[server] Channel send failed: ${result.error}`);
+        }
+      }).catch(err => {
+        console.error(`[server] Channel send error:`, err);
+      });
+
+      return { ok: true, eventId: event.id, shortId };
     },
   );
 
