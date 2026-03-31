@@ -207,7 +207,30 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       line-height: 1.3;
       flex: 1;
       margin-right: 8px;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
     }
+
+    .card-title.expanded {
+      -webkit-line-clamp: unset;
+      overflow: visible;
+      white-space: pre-wrap;
+    }
+
+    .expand-btn {
+      background: none;
+      border: none;
+      color: #58a6ff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 0;
+      opacity: 0.8;
+    }
+
+    .expand-btn:hover { opacity: 1; }
 
     .badge {
       font-size: 10px;
@@ -632,12 +655,17 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           </div>\`
         : '';
 
+      const titleId = 'title-' + s.sessionId.slice(0, 8);
+      const longTitle = s.title.length > 80;
+      const expandBtn = longTitle ? \`<button class="expand-btn" onclick="document.getElementById('\${titleId}').classList.toggle('expanded');this.textContent=this.textContent==='...'?'▲':'...'">...</button>\` : '';
+
       return \`
         <div class="card \${cardClass}">
           <div class="card-header">
-            <span class="card-title">\${escapeHtml(s.title)}</span>
+            <span class="card-title" id="\${titleId}">\${escapeHtml(s.title)}</span>
             <span class="badge \${s.state}">\${stateLabel(s.state)}</span>
           </div>
+          \${expandBtn}
           \${pending}
           \${idleInput}
           <div class="card-footer">

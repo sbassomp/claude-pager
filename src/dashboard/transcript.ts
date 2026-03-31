@@ -79,10 +79,14 @@ function extractRecentActivity(lines: string[]): string | null {
         // Otherwise, first line of assistant text
         const text = extractTextFromContent(entry.message.content);
         if (text.length > 15) {
-          const firstLine = text.split('\n').find((l: string) => l.trim().length > 15);
-          if (firstLine) {
-            return firstLine.trim().slice(0, 80) + (firstLine.trim().length > 80 ? '...' : '');
+          // Take first meaningful lines, up to 300 chars
+          const lines = text.split('\n').filter((l: string) => l.trim().length > 0);
+          let result = '';
+          for (const line of lines) {
+            if (result.length + line.length > 300) break;
+            result += (result ? '\n' : '') + line.trim();
           }
+          if (result) return result;
         }
       }
     } catch {
