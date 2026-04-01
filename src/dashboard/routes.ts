@@ -8,15 +8,16 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
     return getDashboardData();
   });
 
-  app.get('/api/v1/sse', async (_request, reply) => {
+  app.get('/api/v1/sse', async (request, reply) => {
+    reply.hijack();
+    request.raw.setTimeout(0);
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
-    reply.raw.write(':\n\n'); // initial comment to flush headers
+    reply.raw.write(':\n\n');
     addSSEClient(reply);
-    reply.hijack();
   });
 
   app.get('/dashboard', async (_request, reply) => {
