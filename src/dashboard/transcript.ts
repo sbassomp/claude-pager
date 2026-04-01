@@ -181,8 +181,21 @@ function parseTranscript(filePath: string): TranscriptInfo {
       }
 
       if (state === 'unknown') {
-        const age = Date.now() - lastTimestamp;
-        if (entry.type === 'progress' || entry.type === 'assistant') {
+        // Use the entry's own timestamp for age, not a potentially mismatched lastTimestamp
+        const entryTs = entry.timestamp ? new Date(entry.timestamp).getTime() || 0 : 0;
+        const age = entryTs > 0 ? Date.now() - entryTs : Date.now() - lastTimestamp;
+
+        if (entry.type === 'assistant') {
+          // If last assistant message is text (no tool_use), Claude finished and awaits input
+          const content = entry.message?.content;
+          const hasToolUse = Array.isArray(content) && content.some((b: { type: string }) => b.type === 'tool_use');
+          if (hasToolUse) {
+            state = age < 60_000 ? 'working' : 'idle';
+          } else {
+            // Claude spoke last with text only — waiting for user
+            state = age < 60_000 ? 'waiting_input' : 'idle';
+          }
+        } else if (entry.type === 'progress') {
           state = age < 60_000 ? 'working' : 'idle';
         } else if (entry.type === 'user') {
           state = age < 60_000 ? 'working' : 'idle';

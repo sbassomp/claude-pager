@@ -659,8 +659,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           : '<span class="flag pending">○ unpush</span>');
       }
 
-      // Show reply input for idle sessions without a pending question
-      const idleInput = (!s.pendingQuestion && (s.state === 'idle' || s.state === 'unknown'))
+      // Show reply input for idle/waiting sessions without a pending question
+      const idleInput = (!s.pendingQuestion && (s.state === 'idle' || s.state === 'waiting_input' || s.state === 'unknown'))
         ? \`<div class="action-row" style="margin-top:6px">
             <input type="text" class="reply-input" id="idle-\${s.sessionId}" placeholder="Send a message..." onkeydown="if(event.key==='Enter')sendToSession('\${s.sessionId}',this.value,this)">
             <button class="action-btn allow" onclick="sendToSession('\${s.sessionId}',document.getElementById('idle-\${s.sessionId}').value,this)">Send</button>
@@ -766,7 +766,22 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
       // Skip DOM update if user is typing in an input field
       if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+
+      // Preserve expanded title state across re-renders
+      const expandedTitles = new Set();
+      document.querySelectorAll('.card-title.expanded').forEach(el => expandedTitles.add(el.id));
+
       container.innerHTML = sortProjects(data.projects).map(renderProject).join('');
+
+      // Restore expanded titles
+      expandedTitles.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.classList.add('expanded');
+          const btn = el.parentElement?.querySelector('.expand-btn');
+          if (btn) btn.textContent = '▲';
+        }
+      });
     }
 
     async function respondTo(eventId, response, btn) {

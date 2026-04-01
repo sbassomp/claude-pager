@@ -6,6 +6,7 @@
 
 - **Send messages to idle sessions** directly from the dashboard — no need to wait for idle_prompt
 - **Expandable titles** — long messages truncated to 2 lines with "..." button to expand
+- **Expanded titles survive refresh** — expanded state is preserved across 2-second auto-refresh cycles
 - **Dismiss button** (🗑) to remove stale sessions manually
 - **tmux tab titles** auto-update with the current session topic (works with Kitty, iTerm2, etc.)
 - Auto-enable tmux `set-titles` on `claude-pager run`
@@ -18,6 +19,9 @@
 
 ### Bug Fixes
 
+- **Fix session state detection** — sessions where Claude asked a question (text-only assistant message) now correctly show as "Waiting" instead of "Working"
+- **Fix timestamp mismatch** — state age is now computed from the entry's own timestamp, not from a potentially unrelated newer entry
+- **Fix missing input for waiting sessions** — "Send a message" field now appears for sessions detected as waiting from transcript (not just idle)
 - Better stale pending detection — check transcript state and progression
 - Human-readable time for pending age (e.g., "6m ago" instead of "378s ago")
 

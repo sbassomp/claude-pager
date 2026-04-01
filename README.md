@@ -156,6 +156,8 @@ Open `http://127.0.0.1:17380/dashboard` in your browser. The dashboard shows:
 - Auto-refresh every 2 seconds
 - tmux tab titles auto-update with the current session topic
 
+> **Note:** Claude Code serializes permission prompts — each sub-agent waits for its response before the next one asks, even when running in parallel. To skip permission prompts for specific tools, configure `permissions.allow` in `~/.claude/settings.json`.
+
 ## Configuration
 
 `~/.claude-pager/config.json`:
