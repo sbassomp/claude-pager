@@ -27,7 +27,8 @@ Get paged on your phone when Claude Code needs input. Reply from Telegram or ntf
 
 ## Features
 
-- **Web dashboard** — live view of all sessions at `http://localhost:17380/dashboard`, with Allow/Deny buttons, text replies, CI/CD status, and git info
+- **Project notes** — capture ideas while agents work, send them when idle. Input via dashboard, Telegram ("Note pour X: ..."), CLI, or voice. Supports image paste.
+- **Web dashboard** — live view of all sessions at `http://localhost:17380/dashboard`, with Allow/Deny buttons, text replies, diff previews, notes panel, CI/CD status, and git info
 - **Multi-session** — run N Claude Code instances in tmux, responses route to the correct pane
 - **Telegram** — inline keyboards (Allow/Deny), reply-to-message routing, voice transcription (Whisper)
 - **ntfy** — self-hosted or ntfy.sh, mobile push notifications
@@ -153,10 +154,47 @@ Open `http://127.0.0.1:17380/dashboard` in your browser. The dashboard shows:
 - **Pin projects** to lock their dashboard position
 - **Expandable titles** — click "..." to see the full message
 - **Dismiss button** (🗑) to remove stale sessions
-- Auto-refresh every 2 seconds
+- **Diff preview** for Edit permission prompts — see what will change before allowing
+- **Notes panel** per project — add, reorder, send, and delete notes inline
+- SSE push for instant updates, polling as fallback
 - tmux tab titles auto-update with the current session topic
 
 > **Note:** Claude Code serializes permission prompts — each sub-agent waits for its response before the next one asks, even when running in parallel. To skip permission prompts for specific tools, configure `permissions.allow` in `~/.claude/settings.json`.
+
+## Project Notes
+
+Capture ideas while agents are busy. Notes are stored per project and can be sent to a session when it becomes idle.
+
+### Adding notes
+
+```bash
+# CLI
+claude-pager note myproject "fix the login CSS"
+claude-pager notes                    # list all pending notes
+
+# Telegram (text or voice)
+Note pour myproject: fix the login CSS
+
+# Dashboard
+# Type in the "Add a note..." field, or paste an image (Ctrl+V)
+```
+
+### API
+
+```bash
+# Add a note
+curl -X POST http://localhost:17380/api/v1/notes \
+  -H 'Content-Type: application/json' \
+  -d '{"project":"myproject","text":"fix the CSS"}'
+
+# List notes
+curl http://localhost:17380/api/v1/notes?project=myproject
+
+# Send a note to its project's idle session
+curl -X POST http://localhost:17380/api/v1/notes/<id>/send
+```
+
+Notes with images are stored in `~/.claude-pager/note-images/` (max 5 MB per image).
 
 ## Configuration
 

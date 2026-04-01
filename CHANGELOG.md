@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.1 (2026-04-01)
+
+### Project Notes
+
+- **Per-project note backlog** — capture ideas and tasks while the agent is working, send them when it's idle
+- **3 input channels**: dashboard (text + paste image), Telegram ("Note pour X: ..."), CLI (`claude-pager note`)
+- **Image support** — paste screenshots directly into the note input, stored as thumbnails with lightbox viewer
+- **Drag & reorder** notes, inline edit text, move up/down buttons
+- **Send to session** — click ▶ to inject note text into the most recent idle session, with visual feedback (card flash + sent banner)
+- **CLI commands**: `claude-pager note <project> <text>` and `claude-pager notes [project]`
+
+### Dashboard Improvements
+
+- **SSE push** — Server-Sent Events for instant dashboard updates, polling as 10s fallback
+- **Diff in permission prompts** — Edit tool requests now show old/new content with red/green coloring
+- **Notes panel inline** with session cards in the grid layout
+- **Colored age indicator** — clock icon turns green → yellow → orange → red based on note age
+- **Fix Enter key** on reply inputs — skip DOM re-render when an input is focused
+
+### Performance
+
+- **Async git status** — `execFile` instead of `execFileSync`, no longer blocks the event loop
+
+### Security
+
+- Fix XSS in image lightbox (createElement instead of innerHTML)
+- Image uploads capped at 5 MB
+- Strict UUID regex for image filename serving
+- Input length limits on note text (10 KB) and project names (255 chars)
+- Atomic file persistence (write tmp + rename)
+- Image files cleaned up when notes are deleted
+
 ## 0.2.2 (2026-03-31)
 
 ### Dashboard Improvements
