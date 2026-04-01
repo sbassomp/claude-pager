@@ -264,8 +264,8 @@ export async function createServer(deps: DaemonDeps) {
           type: 'object',
           required: ['project', 'text'],
           properties: {
-            project: { type: 'string', minLength: 1 },
-            text: { type: 'string', minLength: 1 },
+            project: { type: 'string', minLength: 1, maxLength: 255 },
+            text: { type: 'string', minLength: 1, maxLength: 10000 },
             source: { type: 'string', enum: ['voice', 'dashboard', 'telegram', 'cli', 'api'] },
           },
         } as const,
@@ -402,6 +402,8 @@ export async function createServer(deps: DaemonDeps) {
   );
 
   // Create a note with an image in one request (base64 JSON)
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
   app.post<{ Body: { project: string; text?: string; imageBase64: string; source?: string } }>(
     '/api/v1/notes/with-image',
     {
@@ -410,18 +412,21 @@ export async function createServer(deps: DaemonDeps) {
           type: 'object',
           required: ['project', 'imageBase64'],
           properties: {
-            project: { type: 'string', minLength: 1 },
-            text: { type: 'string' },
-            imageBase64: { type: 'string', minLength: 1 },
+            project: { type: 'string', minLength: 1, maxLength: 255 },
+            text: { type: 'string', maxLength: 10000 },
+            imageBase64: { type: 'string', minLength: 1, maxLength: 7_100_000 }, // ~5MB in base64
             source: { type: 'string' },
           },
         } as const,
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const { project, text, imageBase64, source } = request.body;
-      const note = addNote(project, text || '(image)', (source as Note['source']) || 'dashboard');
       const buf = Buffer.from(imageBase64, 'base64');
+      if (buf.length > MAX_IMAGE_BYTES) {
+        return reply.status(413).send({ error: 'Image too large (max 5 MB)' });
+      }
+      const note = addNote(project, text || '(image)', (source as Note['source']) || 'dashboard');
       const filename = saveImage(buf);
       setNoteImage(note.id, filename);
       return { ok: true, note: { ...note, image: filename } };
@@ -433,8 +438,8 @@ export async function createServer(deps: DaemonDeps) {
     '/api/v1/notes/images/:filename',
     async (request, reply) => {
       const { filename } = request.params;
-      // Sanitize: only allow uuid.png
-      if (!/^[\w-]+\.png$/.test(filename)) {
+      // Sanitize: only allow UUID format filenames
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/i.test(filename)) {
         return reply.status(400).send({ error: 'Invalid filename' });
       }
       const { readFileSync } = await import('node:fs');

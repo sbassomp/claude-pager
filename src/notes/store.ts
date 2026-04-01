@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getDataDir } from '../config/index.js';
@@ -58,7 +58,9 @@ function load(): void {
 
 function persist(): void {
   if (testMode) return;
-  writeFileSync(notesFile(), JSON.stringify(notes, null, 2) + '\n');
+  const tmp = notesFile() + '.tmp';
+  writeFileSync(tmp, JSON.stringify(notes, null, 2) + '\n');
+  renameSync(tmp, notesFile());
 }
 
 export function addNote(project: string, text: string, source: Note['source'] = 'api'): Note {
@@ -106,6 +108,10 @@ export function removeNote(id: string): boolean {
   load();
   const idx = notes.findIndex(n => n.id === id);
   if (idx === -1) return false;
+  const note = notes[idx];
+  if (note.image) {
+    try { unlinkSync(join(imagesDir(), note.image)); } catch { /* already deleted */ }
+  }
   notes.splice(idx, 1);
   persist();
   return true;

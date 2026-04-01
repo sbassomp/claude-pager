@@ -1157,7 +1157,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     function openNoteImage(src) {
       const lb = document.createElement('div');
       lb.className = 'note-lightbox';
-      lb.innerHTML = '<img src="' + src + '">';
+      const img = document.createElement('img');
+      img.src = src;
+      lb.appendChild(img);
       lb.onclick = () => lb.remove();
       document.body.appendChild(lb);
     }
