@@ -440,7 +440,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       border: 1px solid #2d333b;
       border-radius: 8px;
       padding: 12px;
-      margin-top: 12px;
+      min-width: 0;
     }
 
     .notes-header {
@@ -494,6 +494,29 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       color: #484f58;
     }
 
+    .note-grip {
+      cursor: grab;
+      color: #484f58;
+      font-size: 10px;
+      user-select: none;
+    }
+    .note-item.dragging {
+      opacity: 0.4;
+    }
+    .note-item.drag-over {
+      border-top: 2px solid #58a6ff;
+      margin-top: -2px;
+    }
+    .note-btn.move {
+      background: none;
+      color: #484f58;
+      padding: 0 2px;
+      font-size: 8px;
+      min-width: 16px;
+    }
+    .note-btn.move:hover {
+      color: #58a6ff;
+    }
     .note-btn {
       font-family: 'JetBrains Mono', monospace;
       font-size: 10px;
@@ -711,8 +734,11 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       if (s.pendingQuestion) {
         const q = s.pendingQuestion;
         const isPermission = q.type === 'permission_prompt';
+        const contextInfo = q.context
+          ? '<div style="font-size:11px;color:#c9d1d9;margin-bottom:6px;white-space:pre-wrap">' + escapeHtml(q.context.slice(-300)) + '</div>'
+          : '';
         const toolInfo = q.toolName
-          ? '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
+          ? contextInfo + '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
             (q.toolInput ? '<br><code style="font-size:10px;color:#8b949e;word-break:break-all">' + escapeHtml(q.toolInput.slice(0, 200)) + '</code>' : '')
           : escapeHtml(q.message.slice(0, 150));
 
@@ -809,18 +835,22 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <div class="notes-header">Notes</div>
             <div class="note-add-row">
               <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)">
-              <button class="note-btn send" onclick="addNote('\${escapeHtml(project)}',document.getElementById('note-add-\${escapeHtml(project)}').value)">+</button>
+              <button class="note-btn send" onclick="var i=document.getElementById('note-add-\${escapeHtml(project)}');addNote('\${escapeHtml(project)}',i.value,i)">+</button>
             </div>
           </div>
         \`;
       }
 
-      const items = notes.map(n => \`
-        <div class="note-item">
+      const items = notes.map((n, idx) => \`
+        <div class="note-item" draggable="true" data-note-id="\${n.id}" data-project="\${escapeHtml(project)}"
+          ondragstart="onNoteDragStart(event)" ondragover="onNoteDragOver(event)" ondrop="onNoteDrop(event)" ondragend="onNoteDragEnd(event)">
+          <span class="note-grip" title="Drag to reorder">⠿</span>
           <span class="note-text" title="\${escapeHtml(n.text)}">\${escapeHtml(n.text)}</span>
           <span class="note-source">\${n.source}</span>
           <span class="note-age">\${timeAgo(n.createdAt)}</span>
-          <button class="note-btn send" onclick="sendNote('\${n.id}')" title="Send to session">▶</button>
+          \${idx > 0 ? '<button class="note-btn move" onclick="moveNote(\\'' + escapeHtml(project) + '\\',' + idx + ',-1)" title="Move up">▲</button>' : '<span class="note-btn move" style="visibility:hidden">▲</span>'}
+          \${idx < notes.length - 1 ? '<button class="note-btn move" onclick="moveNote(\\'' + escapeHtml(project) + '\\',' + idx + ',1)" title="Move down">▼</button>' : '<span class="note-btn move" style="visibility:hidden">▼</span>'}
+          <button class="note-btn send" onclick="sendNote('\${n.id}',this)" title="Send to session">▶</button>
           <button class="note-btn delete" onclick="deleteNote('\${n.id}')" title="Delete">✕</button>
         </div>
       \`).join('');
@@ -834,7 +864,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           \${items}
           <div class="note-add-row">
             <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)">
-            <button class="note-btn send" onclick="addNote('\${escapeHtml(project)}',document.getElementById('note-add-\${escapeHtml(project)}').value)">+</button>
+            <button class="note-btn send" onclick="var i=document.getElementById('note-add-\${escapeHtml(project)}');addNote('\${escapeHtml(project)}',i.value,i)">+</button>
           </div>
         </div>
       \`;
@@ -858,8 +888,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           \${infoRow}
           <div class="sessions">
             \${p.sessions.map(renderSession).join('')}
+            \${renderNotes(p.name, p.notes)}
           </div>
-          \${renderNotes(p.name, p.notes)}
         </div>
       \`;
     }
@@ -916,8 +946,24 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       });
     }
 
+    function showSentBanner(card, icon, text) {
+      if (!card) return;
+      const old = card.querySelector('.sent-banner');
+      if (old) old.remove();
+      const banner = document.createElement('div');
+      banner.className = 'sent-banner';
+      banner.innerHTML = '<span style="font-weight:600">' + icon + '</span> ' + escapeHtml(text.length > 120 ? text.slice(0, 120) + '...' : text);
+      banner.style.cssText = 'background:#0d2818;border:1px solid #238636;border-radius:6px;padding:6px 10px;margin:8px 0;font-size:12px;color:#c9d1d9;white-space:pre-wrap;';
+      const footer = card.querySelector('.card-footer');
+      if (footer) card.insertBefore(banner, footer);
+      else card.appendChild(banner);
+      card.style.boxShadow = '0 0 16px #238636';
+      setTimeout(() => { card.style.boxShadow = ''; }, 5000);
+    }
+
     async function respondTo(eventId, response, btn) {
       if (btn) btn.disabled = true;
+      const card = btn?.closest('.card');
       try {
         const res = await fetch('/api/v1/respond-to', {
           method: 'POST',
@@ -925,6 +971,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           body: JSON.stringify({ eventId, response }),
         });
         if (res.ok) {
+          const label = response === 'allow' ? '✓ Allowed' : response === 'deny' ? '✗ Denied' : response;
+          showSentBanner(card, '↩', label);
           fetchDashboard();
         } else {
           const err = await res.json();
@@ -952,6 +1000,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     async function sendToSession(sessionId, text, btn) {
       if (!text || !text.trim()) return;
       if (btn) btn.disabled = true;
+      const card = btn?.closest('.card');
+      const input = card?.querySelector('input');
+      if (input) { input.value = ''; input.blur(); }
       try {
         const res = await fetch('/api/v1/send-to', {
           method: 'POST',
@@ -959,6 +1010,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           body: JSON.stringify({ sessionId, text: text.trim() }),
         });
         if (res.ok) {
+          showSentBanner(card, '▶', text.trim());
           fetchDashboard();
         } else {
           const err = await res.json();
@@ -970,8 +1022,11 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       if (btn) btn.disabled = false;
     }
 
-    async function addNote(project, text) {
-      if (!text || !text.trim()) return;
+    let addingNote = false;
+    async function addNote(project, text, input) {
+      if (!text || !text.trim() || addingNote) return;
+      addingNote = true;
+      if (input) { input.value = ''; input.blur(); }
       try {
         await fetch('/api/v1/notes', {
           method: 'POST',
@@ -982,6 +1037,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       } catch (e) {
         console.error('add-note error:', e);
       }
+      addingNote = false;
     }
 
     async function deleteNote(noteId) {
@@ -993,17 +1049,101 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       }
     }
 
-    async function sendNote(noteId) {
+    async function sendNote(noteId, btn) {
+      if (btn) btn.disabled = true;
+      const noteText = btn?.closest('.note-item')?.querySelector('.note-text')?.textContent || '';
       try {
         const res = await fetch('/api/v1/notes/' + noteId + '/send', { method: 'POST' });
+        const result = await res.json();
         if (!res.ok) {
-          const err = await res.json();
-          console.error('send-note failed:', err);
+          showToast(btn, result.error || 'Failed to send', true);
+        } else {
+          if (result.sessionId) {
+            const card = document.querySelector('#title-' + result.sessionId.slice(0, 8))?.closest('.card');
+            showSentBanner(card, '▶', noteText);
+          }
+          showToast(btn, 'Sent', false);
         }
         fetchDashboard();
       } catch (e) {
         console.error('send-note error:', e);
       }
+      if (btn) btn.disabled = false;
+    }
+
+    function getProjectNoteIds(project) {
+      return Array.from(document.querySelectorAll('.note-item[data-project="' + project + '"]'))
+        .map(el => el.dataset.noteId);
+    }
+
+    async function saveNoteOrder(project) {
+      const orderedIds = getProjectNoteIds(project);
+      try {
+        await fetch('/api/v1/notes/reorder', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project, orderedIds }),
+        });
+      } catch (e) {
+        console.error('reorder error:', e);
+      }
+    }
+
+    function moveNote(project, idx, direction) {
+      const items = document.querySelectorAll('.note-item[data-project="' + project + '"]');
+      const target = idx + direction;
+      if (target < 0 || target >= items.length) return;
+      const parent = items[0].parentNode;
+      if (direction === -1) parent.insertBefore(items[idx], items[target]);
+      else parent.insertBefore(items[target], items[idx]);
+      saveNoteOrder(project);
+    }
+
+    let draggedNote = null;
+    function onNoteDragStart(e) {
+      draggedNote = e.currentTarget;
+      draggedNote.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    }
+    function onNoteDragOver(e) {
+      e.preventDefault();
+      const item = e.currentTarget;
+      if (item !== draggedNote) item.classList.add('drag-over');
+    }
+    function onNoteDrop(e) {
+      e.preventDefault();
+      const target = e.currentTarget;
+      target.classList.remove('drag-over');
+      if (!draggedNote || target === draggedNote) return;
+      const parent = target.parentNode;
+      const items = Array.from(parent.querySelectorAll('.note-item'));
+      const fromIdx = items.indexOf(draggedNote);
+      const toIdx = items.indexOf(target);
+      if (fromIdx < toIdx) parent.insertBefore(draggedNote, target.nextSibling);
+      else parent.insertBefore(draggedNote, target);
+      saveNoteOrder(draggedNote.dataset.project);
+    }
+    function onNoteDragEnd(e) {
+      document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+      if (draggedNote) draggedNote.classList.remove('dragging');
+      draggedNote = null;
+    }
+
+    function showToast(anchor, text, isError) {
+      const toast = document.createElement('span');
+      toast.textContent = (isError ? '✗ ' : '✓ ') + text;
+      toast.style.cssText = 'position:absolute;padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;z-index:10;pointer-events:none;'
+        + (isError ? 'background:#490202;color:#f85149;' : 'background:#0d2818;color:#3fb950;');
+      if (anchor) {
+        const rect = anchor.getBoundingClientRect();
+        toast.style.left = rect.left + 'px';
+        toast.style.top = (rect.top - 24) + 'px';
+      } else {
+        toast.style.right = '24px';
+        toast.style.top = '70px';
+      }
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2000);
     }
 
     async function allowAll() {

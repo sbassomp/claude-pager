@@ -37,6 +37,7 @@ export interface DashboardSession {
     message: string;
     toolName?: string;
     toolInput?: string;
+    context?: string;
     agoSeconds: number;
   };
   git: GitInfo;
@@ -119,6 +120,7 @@ export async function getDashboardData(): Promise<DashboardResponse> {
             message: pendingQ.event.message.slice(0, 200),
             toolName: pendingQ.event.toolName,
             toolInput: pendingQ.event.toolInput,
+            context: pendingQ.event.context,
             agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
           } : undefined,
           git,

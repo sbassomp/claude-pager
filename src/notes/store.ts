@@ -17,6 +17,7 @@ const MAX_NOTES = 500;
 
 let notes: Note[] = [];
 let loaded = false;
+let testMode = false;
 
 function notesFile(): string {
   return join(getDataDir(), 'notes.json');
@@ -34,6 +35,7 @@ function load(): void {
 }
 
 function persist(): void {
+  if (testMode) return;
   writeFileSync(notesFile(), JSON.stringify(notes, null, 2) + '\n');
 }
 
@@ -87,6 +89,21 @@ export function removeNote(id: string): boolean {
   return true;
 }
 
+export function reorderNotes(project: string, orderedIds: string[]): boolean {
+  load();
+  const normalized = normalizeProject(project);
+  const projectNotes = notes.filter(n => n.project === normalized && n.status === 'pending');
+  const otherNotes = notes.filter(n => n.project !== normalized || n.status !== 'pending');
+
+  // Sort project notes by the provided order
+  const idIndex = new Map(orderedIds.map((id, i) => [id, i]));
+  projectNotes.sort((a, b) => (idIndex.get(a.id) ?? 999) - (idIndex.get(b.id) ?? 999));
+
+  notes = [...otherNotes, ...projectNotes];
+  persist();
+  return true;
+}
+
 export function listProjects(): string[] {
   load();
   const projects = new Set(notes.filter(n => n.status === 'pending').map(n => n.project));
@@ -122,5 +139,5 @@ export function matchProject(input: string): string | null {
 export function _resetStore(): void {
   notes = [];
   loaded = true; // Mark as loaded so it doesn't re-read the file
-  try { writeFileSync(notesFile(), '[]'); } catch { /* ok if file doesn't exist */ }
+  testMode = true; // Disable file persistence during tests
 }

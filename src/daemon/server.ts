@@ -4,7 +4,7 @@ import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, removeSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
-import { addNote, listNotes, getNote, removeNote, markSent } from '../notes/store.js';
+import { addNote, listNotes, getNote, removeNote, markSent, reorderNotes } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
@@ -29,6 +29,7 @@ const eventBodySchema = {
     cwd: { type: 'string' },
     tool_name: { type: 'string' },
     tool_input: { type: 'string' },
+    context: { type: 'string' },
   },
   anyOf: [
     { required: ['notification_type'] },
@@ -81,6 +82,7 @@ export async function createServer(deps: DaemonDeps) {
         message: body.title ? `${body.title}: ${message}` : message,
         toolName: body.tool_name || undefined,
         toolInput: body.tool_input || undefined,
+        context: body.context || undefined,
         project,
         timestamp: Date.now(),
       };
@@ -312,20 +314,37 @@ export async function createServer(deps: DaemonDeps) {
       if (sessions.length === 0) {
         return reply.status(404).send({ error: 'No active session for this project' });
       }
-      if (sessions.length > 1) {
-        return reply.status(409).send({
-          error: 'Multiple sessions for this project',
-          sessions: sessions.map(s => ({ sessionId: s.sessionId, pane: s.tmuxPane })),
-        });
-      }
 
-      const session = sessions[0];
+      // Prefer the most recently active session
+      const session = sessions.sort((a, b) => b.timestamp - a.timestamp)[0];
       const ok = await injector.sendResponse(session, note.text, 'idle_prompt');
       if (!ok) {
         return reply.status(500).send({ error: 'Failed to inject note' });
       }
       markSent(note.id);
       return { ok: true, noteId: note.id, sessionId: session.sessionId, injected: true };
+    },
+  );
+
+  // Reorder notes for a project
+  app.patch<{ Body: { project: string; orderedIds: string[] } }>(
+    '/api/v1/notes/reorder',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['project', 'orderedIds'],
+          properties: {
+            project: { type: 'string', minLength: 1 },
+            orderedIds: { type: 'array', items: { type: 'string' } },
+          },
+        } as const,
+      },
+    },
+    async (request) => {
+      const { project, orderedIds } = request.body;
+      reorderNotes(project, orderedIds);
+      return { ok: true };
     },
   );
 

@@ -41,6 +41,7 @@ export interface RelayEvent {
   message: string;
   toolName?: string;
   toolInput?: string;
+  context?: string;
   project: string;
   timestamp: number;
 }

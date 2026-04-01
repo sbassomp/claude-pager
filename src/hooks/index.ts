@@ -29,7 +29,13 @@ function getActiveWindowId(): number | undefined {
   }
 }
 
-function findToolUseInFile(filePath: string, maxLines: number): { toolName?: string; toolInput?: string } | null {
+interface ToolUseInfo {
+  toolName?: string;
+  toolInput?: string;
+  context?: string;
+}
+
+function findToolUseInFile(filePath: string, maxLines: number): ToolUseInfo | null {
   try {
     const content = readFileSync(filePath, 'utf-8');
     const lines = content.trim().split('\n');
@@ -50,7 +56,14 @@ function findToolUseInFile(filePath: string, maxLines: number): { toolName?: str
               } else if (typeof input === 'object') {
                 toolInput = JSON.stringify(input).slice(0, 200);
               }
-              return { toolName: block.name, toolInput };
+              // Extract assistant text from same message as context
+              const textBlocks = entry.message.content
+                .filter((b: { type: string; text?: string }) => b.type === 'text' && b.text)
+                .map((b: { text: string }) => b.text);
+              const context = textBlocks.length > 0
+                ? textBlocks.join('\n').slice(-500)
+                : undefined;
+              return { toolName: block.name, toolInput, context };
             }
           }
         }
@@ -64,7 +77,7 @@ function findToolUseInFile(filePath: string, maxLines: number): { toolName?: str
   return null;
 }
 
-function extractToolContext(transcriptPath: string): { toolName?: string; toolInput?: string } {
+function extractToolContext(transcriptPath: string): ToolUseInfo {
   // Try the main transcript first
   const result = findToolUseInFile(transcriptPath, 30);
   if (result) return result;
@@ -150,7 +163,7 @@ async function handleNotification(): Promise<void> {
       // Enrich with tool name and input
       const ctx = extractToolContext(data.transcript_path);
       if (ctx.toolName) {
-        enriched = { ...data, tool_name: ctx.toolName, tool_input: ctx.toolInput };
+        enriched = { ...data, tool_name: ctx.toolName, tool_input: ctx.toolInput, context: ctx.context };
       }
     } else if (type === 'idle_prompt') {
       // Enrich with last assistant message for context
