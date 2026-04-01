@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getDataDir } from '../config/index.js';
@@ -8,6 +8,7 @@ export interface Note {
   id: string;
   project: string;
   text: string;
+  image?: string; // filename in note-images/
   source: 'voice' | 'dashboard' | 'telegram' | 'cli' | 'api';
   createdAt: number;
   status: 'pending' | 'sent';
@@ -21,6 +22,27 @@ let testMode = false;
 
 function notesFile(): string {
   return join(getDataDir(), 'notes.json');
+}
+
+export function imagesDir(): string {
+  const dir = join(getDataDir(), 'note-images');
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+export function saveImage(data: Buffer): string {
+  const filename = randomUUID() + '.png';
+  writeFileSync(join(imagesDir(), filename), data);
+  return filename;
+}
+
+export function setNoteImage(id: string, filename: string): boolean {
+  load();
+  const note = notes.find(n => n.id === id);
+  if (!note) return false;
+  note.image = filename;
+  persist();
+  return true;
 }
 
 function load(): void {
@@ -85,6 +107,15 @@ export function removeNote(id: string): boolean {
   const idx = notes.findIndex(n => n.id === id);
   if (idx === -1) return false;
   notes.splice(idx, 1);
+  persist();
+  return true;
+}
+
+export function updateNoteText(id: string, text: string): boolean {
+  load();
+  const note = notes.find(n => n.id === id);
+  if (!note) return false;
+  note.text = text.trim();
   persist();
   return true;
 }

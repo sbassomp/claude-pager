@@ -481,17 +481,47 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      cursor: text;
     }
 
-    .note-item .note-source {
-      font-size: 9px;
-      color: #484f58;
-      text-transform: uppercase;
+    .note-clock {
+      font-size: 11px;
+      cursor: default;
+      flex-shrink: 0;
     }
 
-    .note-item .note-age {
-      font-size: 10px;
-      color: #484f58;
+    .note-thumb {
+      width: 32px;
+      height: 32px;
+      object-fit: cover;
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+      border: 1px solid #30363d;
+      transition: transform 0.15s;
+    }
+
+    .note-thumb:hover {
+      transform: scale(1.1);
+      border-color: #58a6ff;
+    }
+
+    .note-lightbox {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      cursor: pointer;
+    }
+
+    .note-lightbox img {
+      max-width: 90vw;
+      max-height: 90vh;
+      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(0,0,0,0.5);
     }
 
     .note-grip {
@@ -660,6 +690,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
   <script>
     let data = null;
+    const sentMessages = new Map(); // sessionId → { icon, text, at }
 
     function getPinnedOrder() {
       try { return JSON.parse(localStorage.getItem('dashboard-pin-order') || '[]'); }
@@ -712,6 +743,32 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       return Math.floor(s / 86400) + 'd ago';
     }
 
+    function noteAgeColor(epochMs) {
+      const m = (Date.now() - epochMs) / 60000;
+      if (m < 10) return '#3fb950';   // green — fresh
+      if (m < 60) return '#d29922';   // yellow — aging
+      if (m < 360) return '#f0883e';  // orange — old
+      return '#f85149';               // red — stale
+    }
+
+    function formatToolInput(input) {
+      if (!input) return '';
+      const hasDiff = input.includes('--- old') && input.includes('+++ new');
+      if (hasDiff) {
+        const lines = input.slice(0, 800).split('\\n');
+        const html = lines.map(line => {
+          const escaped = escapeHtml(line);
+          if (line.startsWith('+++ new')) return '<span style="color:#3fb950;font-weight:600">' + escaped + '</span>';
+          if (line.startsWith('--- old')) return '<span style="color:#f85149;font-weight:600">' + escaped + '</span>';
+          if (line.startsWith('+')) return '<span style="color:#3fb950">' + escaped + '</span>';
+          if (line.startsWith('-')) return '<span style="color:#f85149">' + escaped + '</span>';
+          return escaped;
+        }).join('\\n');
+        return '<pre style="font-size:10px;color:#8b949e;word-break:break-all;white-space:pre-wrap;margin:4px 0;max-height:200px;overflow-y:auto">' + html + '</pre>';
+      }
+      return '<code style="font-size:10px;color:#8b949e;word-break:break-all">' + escapeHtml(input.slice(0, 400)) + '</code>';
+    }
+
     function stateLabel(state) {
       const labels = {
         working: 'Working',
@@ -739,7 +796,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           : '';
         const toolInfo = q.toolName
           ? contextInfo + '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
-            (q.toolInput ? '<br><code style="font-size:10px;color:#8b949e;word-break:break-all">' + escapeHtml(q.toolInput.slice(0, 200)) + '</code>' : '')
+            (q.toolInput ? '<br>' + formatToolInput(q.toolInput) : '')
           : escapeHtml(q.message.slice(0, 150));
 
         const actions = isPermission
@@ -798,6 +855,16 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <button class="dismiss-btn" onclick="dismissSession('\${s.sessionId}')" title="Dismiss session">🗑</button>
           </div>
           \${expandBtn}
+          \${(() => {
+            const sent = sentMessages.get(s.sessionId);
+            if (sent && Date.now() - sent.at < 300_000) {
+              const label = sent.icon === '▶' ? 'Working on' : 'Replied';
+              return '<div style="background:#0d2818;border:1px solid #238636;border-radius:6px;padding:6px 10px;margin:8px 0;font-size:12px;color:#c9d1d9;white-space:pre-wrap">'
+                + '<span style="color:#3fb950;font-weight:600">' + label + ' :</span> '
+                + escapeHtml(sent.text.length > 150 ? sent.text.slice(0, 150) + '...' : sent.text) + '</div>';
+            }
+            return '';
+          })()}
           \${pending}
           \${idleInput}
           <div class="card-footer">
@@ -834,26 +901,30 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           <div class="notes-panel">
             <div class="notes-header">Notes</div>
             <div class="note-add-row">
-              <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)">
+              <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)" onpaste="handleNotePaste(event,'\${escapeHtml(project)}')">
               <button class="note-btn send" onclick="var i=document.getElementById('note-add-\${escapeHtml(project)}');addNote('\${escapeHtml(project)}',i.value,i)">+</button>
             </div>
           </div>
         \`;
       }
 
-      const items = notes.map((n, idx) => \`
+      const items = notes.map((n, idx) => {
+        const thumb = n.image
+          ? '<img src="/api/v1/notes/images/' + escapeHtml(n.image) + '" class="note-thumb" onclick="openNoteImage(this.src)" title="Click to enlarge">'
+          : '';
+        return \`
         <div class="note-item" draggable="true" data-note-id="\${n.id}" data-project="\${escapeHtml(project)}"
           ondragstart="onNoteDragStart(event)" ondragover="onNoteDragOver(event)" ondrop="onNoteDrop(event)" ondragend="onNoteDragEnd(event)">
           <span class="note-grip" title="Drag to reorder">⠿</span>
-          <span class="note-text" title="\${escapeHtml(n.text)}">\${escapeHtml(n.text)}</span>
-          <span class="note-source">\${n.source}</span>
-          <span class="note-age">\${timeAgo(n.createdAt)}</span>
+          \${thumb}
+          <span class="note-text" title="\${escapeHtml(n.text)}" onclick="editNote(this,'\${n.id}')">\${escapeHtml(n.text)}</span>
+          <span class="note-clock" title="\${timeAgo(n.createdAt)}" style="color:\${noteAgeColor(n.createdAt)}">⏱</span>
           \${idx > 0 ? '<button class="note-btn move" onclick="moveNote(\\'' + escapeHtml(project) + '\\',' + idx + ',-1)" title="Move up">▲</button>' : '<span class="note-btn move" style="visibility:hidden">▲</span>'}
           \${idx < notes.length - 1 ? '<button class="note-btn move" onclick="moveNote(\\'' + escapeHtml(project) + '\\',' + idx + ',1)" title="Move down">▼</button>' : '<span class="note-btn move" style="visibility:hidden">▼</span>'}
           <button class="note-btn send" onclick="sendNote('\${n.id}',this)" title="Send to session">▶</button>
           <button class="note-btn delete" onclick="deleteNote('\${n.id}')" title="Delete">✕</button>
         </div>
-      \`).join('');
+      \`}).join('');
 
       return \`
         <div class="notes-panel">
@@ -863,7 +934,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           </div>
           \${items}
           <div class="note-add-row">
-            <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)">
+            <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)" onpaste="handleNotePaste(event,'\${escapeHtml(project)}')">
             <button class="note-btn send" onclick="var i=document.getElementById('note-add-\${escapeHtml(project)}');addNote('\${escapeHtml(project)}',i.value,i)">+</button>
           </div>
         </div>
@@ -926,10 +997,17 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         allowAllBtn.style.display = 'none';
       }
 
-      // Skip DOM update if user is typing in an input field
-      if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+      // Skip DOM update if user is focused on an input field
+      const focused = document.activeElement;
+      if (focused && focused.tagName === 'INPUT' && focused.classList.contains('reply-input')) return;
 
-      // Preserve expanded title state across re-renders
+      // Preserve input values and cursor position across re-renders
+      const savedInputs = new Map();
+      const focusedId = focused?.id;
+      const cursorPos = focused?.selectionStart;
+      document.querySelectorAll('.reply-input').forEach(inp => {
+        if (inp.id && inp.value.trim()) savedInputs.set(inp.id, inp.value);
+      });
       const expandedTitles = new Set();
       document.querySelectorAll('.card-title.expanded').forEach(el => expandedTitles.add(el.id));
 
@@ -944,21 +1022,27 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           if (btn) btn.textContent = '▲';
         }
       });
+
+      // Restore input values and focus
+      savedInputs.forEach((val, id) => {
+        const inp = document.getElementById(id);
+        if (inp) inp.value = val;
+      });
+      if (focusedId) {
+        const el = document.getElementById(focusedId);
+        if (el) { el.focus(); if (cursorPos != null) el.selectionStart = el.selectionEnd = cursorPos; }
+      }
     }
 
-    function showSentBanner(card, icon, text) {
+    function showSentBanner(card, icon, text, sessionId) {
       if (!card) return;
-      const old = card.querySelector('.sent-banner');
-      if (old) old.remove();
-      const banner = document.createElement('div');
-      banner.className = 'sent-banner';
-      banner.innerHTML = '<span style="font-weight:600">' + icon + '</span> ' + escapeHtml(text.length > 120 ? text.slice(0, 120) + '...' : text);
-      banner.style.cssText = 'background:#0d2818;border:1px solid #238636;border-radius:6px;padding:6px 10px;margin:8px 0;font-size:12px;color:#c9d1d9;white-space:pre-wrap;';
-      const footer = card.querySelector('.card-footer');
-      if (footer) card.insertBefore(banner, footer);
-      else card.appendChild(banner);
-      card.style.boxShadow = '0 0 16px #238636';
-      setTimeout(() => { card.style.boxShadow = ''; }, 5000);
+      // Track for persistent rendering across re-renders
+      const sid = sessionId || card.querySelector('.card-title')?.id?.replace('title-', '');
+      if (sid) {
+        // Find full sessionId from data
+        const fullId = data?.projects?.flatMap(p => p.sessions).find(s => s.sessionId.startsWith(sid))?.sessionId || sid;
+        sentMessages.set(fullId, { icon, text, at: Date.now() });
+      }
     }
 
     async function respondTo(eventId, response, btn) {
@@ -1038,6 +1122,70 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         console.error('add-note error:', e);
       }
       addingNote = false;
+    }
+
+    async function handleNotePaste(event, project) {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          event.preventDefault();
+          const blob = item.getAsFile();
+          if (!blob) return;
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result.split(',')[1];
+            const text = event.target.value?.trim() || '';
+            try {
+              await fetch('/api/v1/notes/with-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project, text: text || '(image)', imageBase64: base64, source: 'dashboard' }),
+              });
+              event.target.value = '';
+              fetchDashboard();
+            } catch (e) {
+              console.error('paste-image error:', e);
+            }
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+    }
+
+    function openNoteImage(src) {
+      const lb = document.createElement('div');
+      lb.className = 'note-lightbox';
+      lb.innerHTML = '<img src="' + src + '">';
+      lb.onclick = () => lb.remove();
+      document.body.appendChild(lb);
+    }
+
+    function editNote(span, noteId) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'reply-input';
+      input.value = span.textContent;
+      input.style.cssText = 'flex:1;font-size:12px;';
+      span.replaceWith(input);
+      input.focus();
+      input.select();
+      async function save() {
+        const text = input.value.trim();
+        if (text && text !== span.textContent) {
+          await fetch('/api/v1/notes/' + noteId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text }),
+          });
+          span.textContent = text;
+          span.title = text;
+        }
+        input.replaceWith(span);
+      }
+      input.onblur = save;
+      input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } if (e.key === 'Escape') input.replaceWith(span); };
     }
 
     async function deleteNote(noteId) {

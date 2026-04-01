@@ -4,11 +4,13 @@ import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, removeSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
-import { addNote, listNotes, getNote, removeNote, markSent, reorderNotes } from '../notes/store.js';
+import { addNote, listNotes, getNote, removeNote, markSent, updateNoteText, reorderNotes, saveImage, setNoteImage, imagesDir } from '../notes/store.js';
+import type { Note } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
 import { broadcastSSE } from '../dashboard/sse.js';
+import { readTranscriptInfo } from '../dashboard/transcript.js';
 
 interface DaemonDeps {
   config: RelayConfig;
@@ -285,6 +287,27 @@ export async function createServer(deps: DaemonDeps) {
     },
   );
 
+  // Update a note's text
+  app.patch<{ Params: { id: string }; Body: { text: string } }>(
+    '/api/v1/notes/:id',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['text'],
+          properties: { text: { type: 'string', minLength: 1 } },
+        } as const,
+      },
+    },
+    async (request, reply) => {
+      const ok = updateNoteText(request.params.id, request.body.text);
+      if (!ok) {
+        return reply.status(404).send({ error: 'Note not found' });
+      }
+      return { ok: true };
+    },
+  );
+
   // Delete a note
   app.delete<{ Params: { id: string } }>(
     '/api/v1/notes/:id',
@@ -297,7 +320,7 @@ export async function createServer(deps: DaemonDeps) {
     },
   );
 
-  // Send a note to its project's session
+  // Send a note to its project's session (only idle/waiting sessions)
   app.post<{ Params: { id: string } }>(
     '/api/v1/notes/:id/send',
     async (request, reply) => {
@@ -306,7 +329,7 @@ export async function createServer(deps: DaemonDeps) {
         return reply.status(404).send({ error: 'Note not found or already sent' });
       }
 
-      // Find a session for this project
+      // Find sessions for this project
       cleanDeadSessions();
       const sessions = listSessions().filter(s =>
         s.tmuxPane && s.cwd.endsWith('/' + note.project),
@@ -315,8 +338,16 @@ export async function createServer(deps: DaemonDeps) {
         return reply.status(404).send({ error: 'No active session for this project' });
       }
 
-      // Prefer the most recently active session
-      const session = sessions.sort((a, b) => b.timestamp - a.timestamp)[0];
+      // Only target idle/waiting sessions
+      const waiting = sessions.filter(s => {
+        const info = readTranscriptInfo(s.sessionId, s.cwd);
+        return info.state === 'idle' || info.state === 'waiting_input' || info.state === 'unknown';
+      });
+      if (waiting.length === 0) {
+        return reply.status(409).send({ error: 'All sessions are busy — wait for an idle session' });
+      }
+
+      const session = waiting.sort((a, b) => b.timestamp - a.timestamp)[0];
       const ok = await injector.sendResponse(session, note.text, 'idle_prompt');
       if (!ok) {
         return reply.status(500).send({ error: 'Failed to inject note' });
@@ -345,6 +376,75 @@ export async function createServer(deps: DaemonDeps) {
       const { project, orderedIds } = request.body;
       reorderNotes(project, orderedIds);
       return { ok: true };
+    },
+  );
+
+  // Upload image and attach to a note
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/notes/:id/image',
+    { config: { rawBody: true } },
+    async (request, reply) => {
+      const noteId = request.params.id;
+      const note = getNote(noteId);
+      if (!note) {
+        return reply.status(404).send({ error: 'Note not found' });
+      }
+
+      const body = request.body as Buffer;
+      if (!body || !Buffer.isBuffer(body)) {
+        return reply.status(400).send({ error: 'Expected raw image body' });
+      }
+
+      const filename = saveImage(body);
+      setNoteImage(noteId, filename);
+      return { ok: true, noteId, image: filename };
+    },
+  );
+
+  // Create a note with an image in one request (base64 JSON)
+  app.post<{ Body: { project: string; text?: string; imageBase64: string; source?: string } }>(
+    '/api/v1/notes/with-image',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['project', 'imageBase64'],
+          properties: {
+            project: { type: 'string', minLength: 1 },
+            text: { type: 'string' },
+            imageBase64: { type: 'string', minLength: 1 },
+            source: { type: 'string' },
+          },
+        } as const,
+      },
+    },
+    async (request) => {
+      const { project, text, imageBase64, source } = request.body;
+      const note = addNote(project, text || '(image)', (source as Note['source']) || 'dashboard');
+      const buf = Buffer.from(imageBase64, 'base64');
+      const filename = saveImage(buf);
+      setNoteImage(note.id, filename);
+      return { ok: true, note: { ...note, image: filename } };
+    },
+  );
+
+  // Serve note images
+  app.get<{ Params: { filename: string } }>(
+    '/api/v1/notes/images/:filename',
+    async (request, reply) => {
+      const { filename } = request.params;
+      // Sanitize: only allow uuid.png
+      if (!/^[\w-]+\.png$/.test(filename)) {
+        return reply.status(400).send({ error: 'Invalid filename' });
+      }
+      const { readFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      try {
+        const data = readFileSync(join(imagesDir(), filename));
+        reply.type('image/png').send(data);
+      } catch {
+        return reply.status(404).send({ error: 'Image not found' });
+      }
     },
   );
 

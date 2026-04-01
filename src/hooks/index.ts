@@ -49,10 +49,16 @@ function findToolUseInFile(filePath: string, maxLines: number): ToolUseInfo | nu
               let toolInput: string | undefined;
               if (input?.command) {
                 toolInput = input.command;
+              } else if (input?.old_string != null && input?.new_string != null) {
+                // Edit tool — show diff-like view
+                const file = input.file_path || '';
+                const old = String(input.old_string).slice(0, 300);
+                const nw = String(input.new_string).slice(0, 300);
+                toolInput = `${file}\n--- old\n${old}\n+++ new\n${nw}`;
+              } else if (input?.file_path && input?.content) {
+                toolInput = `${input.file_path}\n${String(input.content).slice(0, 150)}`;
               } else if (input?.file_path) {
                 toolInput = input.file_path;
-              } else if (input?.content) {
-                toolInput = `${input.file_path || ''}\n${String(input.content).slice(0, 150)}`;
               } else if (typeof input === 'object') {
                 toolInput = JSON.stringify(input).slice(0, 200);
               }
