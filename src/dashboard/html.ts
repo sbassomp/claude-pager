@@ -868,7 +868,24 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     }
 
     fetchDashboard();
-    setInterval(fetchDashboard, 2000);
+
+    // SSE for instant push — polling as fallback
+    let fallbackTimer = setInterval(fetchDashboard, 10000);
+    function connectSSE() {
+      const es = new EventSource('/api/v1/sse');
+      es.addEventListener('refresh', () => fetchDashboard());
+      es.onopen = () => {
+        clearInterval(fallbackTimer);
+        fallbackTimer = setInterval(fetchDashboard, 10000);
+      };
+      es.onerror = () => {
+        es.close();
+        clearInterval(fallbackTimer);
+        fallbackTimer = setInterval(fetchDashboard, 2000);
+        setTimeout(connectSSE, 3000);
+      };
+    }
+    connectSSE();
   </script>
 </body>
 </html>`;

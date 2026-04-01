@@ -65,67 +65,69 @@ export async function getDashboardData(): Promise<DashboardResponse> {
 
   const DAY_MS = 24 * 3600_000;
 
-  const enriched: Array<DashboardSession & { cwd: string }> = sessions
-    .filter(s => s.tmuxPane)
-    .map(session => {
-      const transcript = readTranscriptInfo(session.sessionId, session.cwd);
-      const git = getGitStatus(session.cwd);
-      // Find pending question for this session — prioritize permission_prompt over idle_prompt
-      const sessionPending = pending.filter(p => p.event.sessionId === session.sessionId);
-      let pendingQ: (typeof sessionPending)[number] | undefined =
-        sessionPending.find(p => p.event.type === 'permission_prompt')
-        || sessionPending[0];
+  const enriched = (await Promise.all(
+    sessions
+      .filter(s => s.tmuxPane)
+      .map(async (session): Promise<DashboardSession & { cwd: string }> => {
+        const transcript = readTranscriptInfo(session.sessionId, session.cwd);
+        const git = await getGitStatus(session.cwd);
+        // Find pending question for this session — prioritize permission_prompt over idle_prompt
+        const sessionPending = pending.filter(p => p.event.sessionId === session.sessionId);
+        let pendingQ: (typeof sessionPending)[number] | undefined =
+          sessionPending.find(p => p.event.type === 'permission_prompt')
+          || sessionPending[0];
 
-      // Auto-clear stale pending questions that were answered directly in the terminal
-      if (pendingQ) {
-        const isStale =
-          // Permission prompt: if transcript progressed after notification, it was answered
-          (pendingQ.event.type === 'permission_prompt' && transcript.lastTimestamp > pendingQ.notifiedAt + 2000) ||
-          // Idle prompt: if Claude is now working again, user already replied
-          (pendingQ.event.type === 'idle_prompt' && transcript.state === 'working' && transcript.lastTimestamp > pendingQ.notifiedAt);
+        // Auto-clear stale pending questions that were answered directly in the terminal
+        if (pendingQ) {
+          const isStale =
+            // Permission prompt: if transcript progressed after notification, it was answered
+            (pendingQ.event.type === 'permission_prompt' && transcript.lastTimestamp > pendingQ.notifiedAt + 2000) ||
+            // Idle prompt: if Claude is now working again, user already replied
+            (pendingQ.event.type === 'idle_prompt' && transcript.state === 'working' && transcript.lastTimestamp > pendingQ.notifiedAt);
 
-        if (isStale) {
-          removePending(pendingQ.event.id);
-          pendingQ = undefined;
+          if (isStale) {
+            removePending(pendingQ.event.id);
+            pendingQ = undefined;
+          }
         }
-      }
 
-      // State: pending question overrides transcript state
-      let state: DashboardSession['state'] = transcript.state;
-      if (pendingQ) {
-        state = pendingQ.event.type === 'permission_prompt'
-          ? 'waiting_permission'
-          : 'waiting_input';
-      }
+        // State: pending question overrides transcript state
+        let state: DashboardSession['state'] = transcript.state;
+        if (pendingQ) {
+          state = pendingQ.event.type === 'permission_prompt'
+            ? 'waiting_permission'
+            : 'waiting_input';
+        }
 
-      // Update tmux pane title with the session title
-      if (session.tmuxPane && transcript.title && transcript.title !== 'No transcript') {
-        const projectName = session.cwd.split('/').pop() || '';
-        updatePaneTitle(session.tmuxPane, `${projectName}: ${transcript.title}`);
-      }
+        // Update tmux pane title with the session title
+        if (session.tmuxPane && transcript.title && transcript.title !== 'No transcript') {
+          const projectName = session.cwd.split('/').pop() || '';
+          updatePaneTitle(session.tmuxPane, `${projectName}: ${transcript.title}`);
+        }
 
-      return {
-        sessionId: session.sessionId,
-        title: transcript.title,
-        state,
-        pendingQuestion: pendingQ ? {
-          eventId: pendingQ.event.id,
-          shortId: pendingQ.shortId,
-          type: pendingQ.event.type,
-          message: pendingQ.event.message.slice(0, 200),
-          toolName: pendingQ.event.toolName,
-          toolInput: pendingQ.event.toolInput,
-          agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
-        } : undefined,
-        git,
-        needsTesting: false, // computed at project level after CI fetch
-        committed: git.modifiedFiles === 0 || transcript.recentCommit,
-        pushed: git.unpushedCommits === 0 || transcript.recentPush,
-        tmuxPane: session.tmuxPane || '',
-        lastActivity: transcript.lastTimestamp || session.timestamp,
-        cwd: session.cwd,
-      };
-    })
+        return {
+          sessionId: session.sessionId,
+          title: transcript.title,
+          state,
+          pendingQuestion: pendingQ ? {
+            eventId: pendingQ.event.id,
+            shortId: pendingQ.shortId,
+            type: pendingQ.event.type,
+            message: pendingQ.event.message.slice(0, 200),
+            toolName: pendingQ.event.toolName,
+            toolInput: pendingQ.event.toolInput,
+            agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
+          } : undefined,
+          git,
+          needsTesting: false, // computed at project level after CI fetch
+          committed: git.modifiedFiles === 0 || transcript.recentCommit,
+          pushed: git.unpushedCommits === 0 || transcript.recentPush,
+          tmuxPane: session.tmuxPane || '',
+          lastActivity: transcript.lastTimestamp || session.timestamp,
+          cwd: session.cwd,
+        };
+      }),
+  ))
     // Filter out sessions with no transcript that are older than 24h (stale recovered sessions)
     .filter(s => !(s.title === 'No transcript' && Date.now() - s.lastActivity > DAY_MS));
 

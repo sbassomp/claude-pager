@@ -7,6 +7,7 @@ import { getSession, removeSession, cleanDeadSessions, listSessions } from '../s
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
+import { broadcastSSE } from '../dashboard/sse.js';
 
 interface DaemonDeps {
   config: RelayConfig;
@@ -84,6 +85,7 @@ export async function createServer(deps: DaemonDeps) {
       };
 
       const shortId = addPending(event);
+      broadcastSSE('refresh');
 
       // Send to channel in background — don't block the hook response
       channel.send(event, shortId).then(result => {
