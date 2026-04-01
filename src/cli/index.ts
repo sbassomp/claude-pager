@@ -94,6 +94,50 @@ program
     recover();
   });
 
+program
+  .command('note <project> <text...>')
+  .description('Add a note to a project backlog')
+  .action(async (project: string, textParts: string[]) => {
+    const text = textParts.join(' ');
+    const config = loadConfig();
+    try {
+      const res = await fetch(`http://127.0.0.1:${config.port}/api/v1/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project, text, source: 'cli' }),
+      });
+      const data = (await res.json()) as { ok: boolean; note: { id: string; project: string } };
+      if (data.ok) {
+        console.log(`Note added for "${data.note.project}"`);
+      }
+    } catch {
+      console.log('Daemon is not running');
+    }
+  });
+
+program
+  .command('notes [project]')
+  .description('List pending notes')
+  .action(async (project?: string) => {
+    const config = loadConfig();
+    try {
+      const url = new URL(`http://127.0.0.1:${config.port}/api/v1/notes`);
+      if (project) url.searchParams.set('project', project);
+      const res = await fetch(url);
+      const data = (await res.json()) as { notes: Array<{ id: string; project: string; text: string; source: string; createdAt: number }> };
+      if (data.notes.length === 0) {
+        console.log('No pending notes');
+        return;
+      }
+      for (const n of data.notes) {
+        const ago = Math.round((Date.now() - n.createdAt) / 1000);
+        console.log(`  [${n.project}] ${n.text} (${n.source}, ${ago}s ago)`);
+      }
+    } catch {
+      console.log('Daemon is not running');
+    }
+  });
+
 // Handle "run" manually to pass all remaining args to claude
 const runIdx = process.argv.indexOf('run');
 if (runIdx !== -1 && runIdx === 2) {

@@ -1,12 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
 import { listPending, removePending } from '../sessions/events.js';
+import { listNotes } from '../notes/store.js';
 import { loadConfig } from '../config/index.js';
 import { readTranscriptInfo } from './transcript.js';
 import { getGitStatus } from './git-status.js';
 import { getCIPipelines } from './ci-provider.js';
 import type { GitInfo } from './git-status.js';
 import type { BranchPipelines } from './ci-provider.js';
+import type { Note } from '../notes/store.js';
 
 // Track last title set per pane to avoid unnecessary tmux calls
 const lastPaneTitle = new Map<string, string>();
@@ -49,6 +51,7 @@ export interface DashboardProject {
   name: string;
   path: string;
   sessions: DashboardSession[];
+  notes: Note[];
   ci?: BranchPipelines;
 }
 
@@ -173,12 +176,14 @@ export async function getDashboardData(): Promise<DashboardResponse> {
       const hasCI = !!(ci?.main || ci?.staging);
       const needsTesting = ciFailed || hasUnpushed || (!hasCI && git ? git.modifiedFiles > 0 : false);
 
+      const projectName = path.split('/').pop() || path;
       return {
-        name: path.split('/').pop() || path,
+        name: projectName,
         path,
         sessions: sessions
           .map(({ cwd: _cwd, ...rest }) => ({ ...rest, needsTesting }))
           .sort((a, b) => (stateOrder[a.state] ?? 5) - (stateOrder[b.state] ?? 5)),
+        notes: listNotes(projectName),
         ci,
         ciRunning,
       };

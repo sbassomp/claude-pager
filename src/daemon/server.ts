@@ -4,6 +4,7 @@ import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, removeSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
+import { addNote, listNotes, getNote, removeNote, markSent } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
@@ -247,6 +248,86 @@ export async function createServer(deps: DaemonDeps) {
     cleanDeadSessions();
     return { sessions: listSessions() };
   });
+
+  // --- Notes ---
+
+  // Add a note
+  app.post<{ Body: { project: string; text: string; source?: string } }>(
+    '/api/v1/notes',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['project', 'text'],
+          properties: {
+            project: { type: 'string', minLength: 1 },
+            text: { type: 'string', minLength: 1 },
+            source: { type: 'string', enum: ['voice', 'dashboard', 'telegram', 'cli', 'api'] },
+          },
+        } as const,
+      },
+    },
+    async (request) => {
+      const { project, text, source } = request.body;
+      const note = addNote(project, text, (source as 'voice' | 'dashboard' | 'telegram' | 'cli' | 'api') || 'api');
+      return { ok: true, note };
+    },
+  );
+
+  // List notes (optionally filtered by project)
+  app.get<{ Querystring: { project?: string } }>(
+    '/api/v1/notes',
+    async (request) => {
+      const { project } = request.query;
+      return { notes: listNotes(project) };
+    },
+  );
+
+  // Delete a note
+  app.delete<{ Params: { id: string } }>(
+    '/api/v1/notes/:id',
+    async (request, reply) => {
+      const removed = removeNote(request.params.id);
+      if (!removed) {
+        return reply.status(404).send({ error: 'Note not found' });
+      }
+      return { ok: true };
+    },
+  );
+
+  // Send a note to its project's session
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/notes/:id/send',
+    async (request, reply) => {
+      const note = getNote(request.params.id);
+      if (!note || note.status === 'sent') {
+        return reply.status(404).send({ error: 'Note not found or already sent' });
+      }
+
+      // Find a session for this project
+      cleanDeadSessions();
+      const sessions = listSessions().filter(s =>
+        s.tmuxPane && s.cwd.endsWith('/' + note.project),
+      );
+      if (sessions.length === 0) {
+        return reply.status(404).send({ error: 'No active session for this project' });
+      }
+      if (sessions.length > 1) {
+        return reply.status(409).send({
+          error: 'Multiple sessions for this project',
+          sessions: sessions.map(s => ({ sessionId: s.sessionId, pane: s.tmuxPane })),
+        });
+      }
+
+      const session = sessions[0];
+      const ok = await injector.sendResponse(session, note.text, 'idle_prompt');
+      if (!ok) {
+        return reply.status(500).send({ error: 'Failed to inject note' });
+      }
+      markSent(note.id);
+      return { ok: true, noteId: note.id, sessionId: session.sessionId, injected: true };
+    },
+  );
 
   registerDashboardRoutes(app);
 

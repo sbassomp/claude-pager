@@ -2,6 +2,7 @@ import type { ChannelProvider, ChannelListeners, NotificationResult, FreeMessage
 import type { TelegramConfig, RelayEvent } from '../../types.js';
 import { escapeHtml, markdownToHtml } from '../../utils/html.js';
 import { handleVoiceMessage } from './voice-handler.js';
+import { addNote, listNotes } from '../../notes/store.js';
 
 interface TelegramResponse {
   ok: boolean;
@@ -285,6 +286,20 @@ export class TelegramProvider implements ChannelProvider {
     onFreeMessage: (msg: FreeMessage) => void | Promise<void>,
   ): Promise<void> {
     if (!msg.text) return;
+
+    // Intercept "Note pour <project>: <text>" pattern
+    const noteMatch = msg.text.match(/^note\s+(?:pour|for)\s+([^:]+):\s*(.+)$/is);
+    if (noteMatch) {
+      const project = noteMatch[1].trim();
+      const text = noteMatch[2].trim();
+      if (project && text) {
+        const note = addNote(project, text, 'telegram');
+        console.log(`[telegram] note added for "${note.project}": "${text}"`);
+        const count = listNotes(note.project).length;
+        await this.sendRaw(`📋 Note added for <b>${escapeHtml(note.project)}</b> (${count} pending)\n<i>${escapeHtml(text)}</i>`);
+        return;
+      }
+    }
 
     console.log(`[telegram] free message: "${msg.text}"`);
     try {

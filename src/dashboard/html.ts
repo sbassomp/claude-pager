@@ -435,6 +435,99 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       margin-left: auto;
     }
 
+    .notes-panel {
+      background: #1a1e2e;
+      border: 1px solid #2d333b;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    .notes-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #8b949e;
+    }
+
+    .notes-header .count {
+      background: #2d333b;
+      color: #c9d1d9;
+      font-size: 10px;
+      padding: 1px 7px;
+      border-radius: 8px;
+    }
+
+    .note-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #c9d1d9;
+      transition: background 0.15s;
+    }
+
+    .note-item:hover {
+      background: #21262d;
+    }
+
+    .note-item .note-text {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .note-item .note-source {
+      font-size: 9px;
+      color: #484f58;
+      text-transform: uppercase;
+    }
+
+    .note-item .note-age {
+      font-size: 10px;
+      color: #484f58;
+    }
+
+    .note-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .note-btn:hover { opacity: 0.85; }
+
+    .note-btn.send {
+      background: #238636;
+      color: #fff;
+    }
+
+    .note-btn.delete {
+      background: #21262d;
+      color: #8b949e;
+    }
+
+    .note-btn.delete:hover {
+      background: #da3633;
+      color: #fff;
+    }
+
+    .note-add-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
     .empty {
       text-align: center;
       padding: 60px 20px;
@@ -709,6 +802,44 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       return main + staging;
     }
 
+    function renderNotes(project, notes) {
+      if (!notes || notes.length === 0) {
+        return \`
+          <div class="notes-panel">
+            <div class="notes-header">Notes</div>
+            <div class="note-add-row">
+              <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)">
+              <button class="note-btn send" onclick="addNote('\${escapeHtml(project)}',document.getElementById('note-add-\${escapeHtml(project)}').value)">+</button>
+            </div>
+          </div>
+        \`;
+      }
+
+      const items = notes.map(n => \`
+        <div class="note-item">
+          <span class="note-text" title="\${escapeHtml(n.text)}">\${escapeHtml(n.text)}</span>
+          <span class="note-source">\${n.source}</span>
+          <span class="note-age">\${timeAgo(n.createdAt)}</span>
+          <button class="note-btn send" onclick="sendNote('\${n.id}')" title="Send to session">▶</button>
+          <button class="note-btn delete" onclick="deleteNote('\${n.id}')" title="Delete">✕</button>
+        </div>
+      \`).join('');
+
+      return \`
+        <div class="notes-panel">
+          <div class="notes-header">
+            <span>Notes</span>
+            <span class="count">\${notes.length}</span>
+          </div>
+          \${items}
+          <div class="note-add-row">
+            <input type="text" class="reply-input" id="note-add-\${escapeHtml(project)}" placeholder="Add a note..." onkeydown="if(event.key==='Enter')addNote('\${escapeHtml(project)}',this.value,this)">
+            <button class="note-btn send" onclick="addNote('\${escapeHtml(project)}',document.getElementById('note-add-\${escapeHtml(project)}').value)">+</button>
+          </div>
+        </div>
+      \`;
+    }
+
     function renderProject(p) {
       const isPinned = getPinnedOrder().includes(p.name);
       const anyNeedsTesting = p.sessions.some(s => s.needsTesting);
@@ -728,6 +859,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           <div class="sessions">
             \${p.sessions.map(renderSession).join('')}
           </div>
+          \${renderNotes(p.name, p.notes)}
         </div>
       \`;
     }
@@ -836,6 +968,42 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         console.error('send-to error:', e);
       }
       if (btn) btn.disabled = false;
+    }
+
+    async function addNote(project, text) {
+      if (!text || !text.trim()) return;
+      try {
+        await fetch('/api/v1/notes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ project, text: text.trim(), source: 'dashboard' }),
+        });
+        fetchDashboard();
+      } catch (e) {
+        console.error('add-note error:', e);
+      }
+    }
+
+    async function deleteNote(noteId) {
+      try {
+        await fetch('/api/v1/notes/' + noteId, { method: 'DELETE' });
+        fetchDashboard();
+      } catch (e) {
+        console.error('delete-note error:', e);
+      }
+    }
+
+    async function sendNote(noteId) {
+      try {
+        const res = await fetch('/api/v1/notes/' + noteId + '/send', { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json();
+          console.error('send-note failed:', err);
+        }
+        fetchDashboard();
+      } catch (e) {
+        console.error('send-note error:', e);
+      }
     }
 
     async function allowAll() {
