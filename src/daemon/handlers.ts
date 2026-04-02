@@ -3,6 +3,7 @@ import type { InputInjector } from '../injectors/injector.js';
 import type { SessionInfo } from '../types.js';
 import { resolveResponse, removePending, isResolved } from '../sessions/events.js';
 import { getSession, listSessions, cleanDeadSessions } from '../sessions/tracker.js';
+import { isSessionInjectable } from '../sessions/helpers.js';
 import { escapeHtml } from '../utils/html.js';
 
 interface PickerState {
@@ -92,7 +93,7 @@ export function createChannelHandlers(
           if (!session) {
             cleanDeadSessions();
             const byCwd = listSessions().filter(s =>
-              s.tmuxPane && s.cwd === question.event.project,
+              isSessionInjectable(s) && s.cwd === question.event.project,
             );
             if (byCwd.length === 1) {
               session = byCwd[0];
@@ -135,7 +136,7 @@ export function createChannelHandlers(
 
         console.log(`[daemon] Routing as free message: "${cleanText}"`);
         cleanDeadSessions();
-        const sessions = listSessions().filter(s => s.tmuxPane);
+        const sessions = listSessions().filter(s => isSessionInjectable(s));
         await routeAsFreeTo(sessions, cleanText);
       } catch (err) {
         console.error('[daemon] Error handling response:', err);
@@ -147,7 +148,7 @@ export function createChannelHandlers(
       try {
         cleanDeadSessions();
         const sessions = listSessions();
-        const activeSessions = sessions.filter(s => s.tmuxPane);
+        const activeSessions = sessions.filter(s => isSessionInjectable(s));
 
         if (activeSessions.length === 0) {
           await msg.replyCallback('No active sessions.');

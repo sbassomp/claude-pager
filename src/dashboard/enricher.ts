@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
+import { isSessionInjectable } from '../sessions/helpers.js';
 import { listPending, removePending } from '../sessions/events.js';
 import { listNotes } from '../notes/store.js';
 import { loadConfig } from '../config/index.js';
@@ -71,7 +72,7 @@ export async function getDashboardData(): Promise<DashboardResponse> {
 
   const enriched = (await Promise.all(
     sessions
-      .filter(s => s.tmuxPane)
+      .filter(s => isSessionInjectable(s))
       .map(async (session): Promise<DashboardSession & { cwd: string }> => {
         const transcript = readTranscriptInfo(session.sessionId, session.cwd);
         const git = await getGitStatus(session.cwd);

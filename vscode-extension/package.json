@@ -1,0 +1,34 @@
+{
+  "name": "claude-pager-vscode",
+  "displayName": "claude-pager",
+  "description": "VS Code companion for claude-pager — enables response injection into VS Code terminals",
+  "version": "0.1.0",
+  "publisher": "sbassomp",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "claude-pager.showStatus",
+        "title": "claude-pager: Show Status"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sbassomp/claude-pager"
+  }
+}

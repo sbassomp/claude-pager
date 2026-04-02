@@ -1,19 +1,23 @@
 import type { InputInjector } from './injector.js';
 import { TmuxInjector } from './tmux/injector.js';
 import { XdotoolInjector } from './xdotool/injector.js';
+import { VscodeInjector } from './vscode/injector.js';
+import { CompositeInjector } from './composite.js';
 
 export function createInjector(type: 'auto' | 'tmux' | 'xdotool' | 'applescript'): InputInjector {
+  const vscode = new VscodeInjector();
+
   switch (type) {
     case 'tmux':
-      return new TmuxInjector();
+      return new CompositeInjector([vscode, new TmuxInjector()]);
     case 'xdotool':
-      return new XdotoolInjector();
+      return new CompositeInjector([vscode, new XdotoolInjector()]);
     case 'auto':
-      // Prefer tmux if available, fallback to xdotool
       if (process.platform === 'linux') {
-        return new TmuxInjector();
+        return new CompositeInjector([vscode, new TmuxInjector()]);
       }
-      throw new Error(`No injector available for platform: ${process.platform}`);
+      // On non-Linux (macOS/Windows), VS Code injector is the only option
+      return new CompositeInjector([vscode]);
     default:
       throw new Error(`Unknown injector type: ${type}`);
   }

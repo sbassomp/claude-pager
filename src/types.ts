@@ -53,6 +53,7 @@ export interface SessionInfo {
   cwd: string;
   windowId?: number;
   tmuxPane?: string;
+  vscodePort?: number;
   timestamp: number;
 }
 

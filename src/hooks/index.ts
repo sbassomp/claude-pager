@@ -139,6 +139,10 @@ async function handleSessionStart(): Promise<void> {
   const input = await readStdin();
   const data = JSON.parse(input);
 
+  const vscodePort = process.env.CLAUDE_PAGER_VSCODE_PORT
+    ? parseInt(process.env.CLAUDE_PAGER_VSCODE_PORT, 10)
+    : undefined;
+
   const info: SessionInfo = {
     sessionId: data.session_id,
     pid: process.ppid,
@@ -146,11 +150,26 @@ async function handleSessionStart(): Promise<void> {
     cwd: data.cwd || process.cwd(),
     windowId: getActiveWindowId(),
     tmuxPane: process.env.TMUX_PANE || undefined,
+    vscodePort: vscodePort || undefined,
     timestamp: Date.now(),
   };
 
   ensureDataDir();
   registerSession(info);
+
+  // Register with VS Code extension for terminal mapping
+  if (vscodePort) {
+    try {
+      await fetch(`http://127.0.0.1:${vscodePort}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: data.session_id, pid: process.ppid }),
+        signal: AbortSignal.timeout(2000),
+      });
+    } catch {
+      // Extension not reachable — session still works without injection
+    }
+  }
 }
 
 async function handleNotification(): Promise<void> {

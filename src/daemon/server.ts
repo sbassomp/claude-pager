@@ -4,6 +4,7 @@ import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
 import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
 import { getSession, removeSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
+import { isSessionInjectable } from '../sessions/helpers.js';
 import { addNote, listNotes, getNote, removeNote, markSent, updateNoteText, reorderNotes, saveImage, setNoteImage, imagesDir } from '../notes/store.js';
 import type { Note } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
@@ -123,7 +124,7 @@ export async function createServer(deps: DaemonDeps) {
         // Fallback: find by cwd
         cleanDeadSessions();
         const byCwd = listSessions().filter(s =>
-          s.tmuxPane && s.cwd === question.event.project,
+          isSessionInjectable(s) && s.cwd === question.event.project,
         );
         if (byCwd.length === 1) session = byCwd[0];
       }
@@ -172,7 +173,7 @@ export async function createServer(deps: DaemonDeps) {
       if (!session) {
         cleanDeadSessions();
         const byCwd = listSessions().filter(s =>
-          s.tmuxPane && s.cwd === question.event.project,
+          isSessionInjectable(s) && s.cwd === question.event.project,
         );
         if (byCwd.length === 1) session = byCwd[0];
       }
@@ -332,7 +333,7 @@ export async function createServer(deps: DaemonDeps) {
       // Find sessions for this project
       cleanDeadSessions();
       const sessions = listSessions().filter(s =>
-        s.tmuxPane && s.cwd.endsWith('/' + note.project),
+        isSessionInjectable(s) && s.cwd.endsWith('/' + note.project),
       );
       if (sessions.length === 0) {
         return reply.status(404).send({ error: 'No active session for this project' });

@@ -43,8 +43,8 @@ Get paged on your phone when Claude Code needs input. Reply from Telegram or ntf
 ## Requirements
 
 - Node.js >= 20
-- tmux
-- Linux (macOS support planned)
+- tmux (for response injection)
+- Linux, WSL, or macOS (see [Windows support](#windows-support))
 - A Telegram bot or ntfy server for notifications
 
 ## Installation
@@ -227,6 +227,45 @@ Notes with images are stored in `~/.claude-pager/note-images/` (max 5 MB per ima
 | `ci.github.token` | — | Personal access token (scope: `actions:read`) |
 
 The hook port can be overridden with `CLAUDE_PAGER_PORT` environment variable.
+
+## Windows Support
+
+claude-pager works on Windows through **WSL** (Windows Subsystem for Linux). This is the recommended setup.
+
+### Quick start (WSL)
+
+1. Install WSL if you don't have it:
+   ```powershell
+   wsl --install
+   ```
+
+2. Inside WSL, install Node.js, tmux, and claude-pager:
+   ```bash
+   sudo apt update && sudo apt install -y tmux
+   curl -fsSL https://fnm.vercel.app/install | bash  # or nvm
+   fnm install 22
+   npm install -g claude-pager
+   ```
+
+3. Configure and run:
+   ```bash
+   claude-pager setup
+   claude-pager start &
+   claude-pager run
+   ```
+
+4. Open the dashboard from Windows at `http://localhost:17380/dashboard` — WSL forwards the port automatically.
+
+### Tips
+
+- **Notifications work from anywhere** — Telegram, ntfy, and the web dashboard all work regardless of OS since they're HTTP-based.
+- **VS Code + WSL** — open your project with `code .` from WSL. The integrated terminal runs inside WSL, so tmux works normally.
+- **Windows Terminal** — pin a WSL tab for your claude-pager sessions. tmux inside Windows Terminal works great.
+- **Multiple distros** — claude-pager runs in whichever WSL distro you install it in. Sessions don't cross distro boundaries.
+
+### Native Windows (without WSL)
+
+Not currently supported. The response injection relies on tmux, which requires a Unix environment. A VS Code extension for native Windows support is on the roadmap.
 
 ## Architecture
 
