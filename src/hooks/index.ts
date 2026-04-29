@@ -54,8 +54,8 @@ function findToolUseInFile(filePath: string, maxLines: number): ToolUseInfo | nu
               } else if (input?.old_string != null && input?.new_string != null) {
                 // Edit tool — show diff-like view
                 const file = input.file_path || '';
-                const old = String(input.old_string).slice(0, 300);
-                const nw = String(input.new_string).slice(0, 300);
+                const old = String(input.old_string).slice(0, 1000);
+                const nw = String(input.new_string).slice(0, 1000);
                 toolInput = `${file}\n--- old\n${old}\n+++ new\n${nw}`;
               } else if (input?.file_path && input?.content) {
                 toolInput = `${input.file_path}\n${String(input.content).slice(0, 150)}`;

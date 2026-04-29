@@ -55,8 +55,8 @@ export class TelegramProvider implements ChannelProvider {
     if (event.toolName) {
       text += `<code>${escapeHtml(event.toolName)}</code>`;
       if (event.toolInput) {
-        const input = event.toolInput.length > 300
-          ? event.toolInput.slice(0, 300) + '...'
+        const input = event.toolInput.length > 3000
+          ? event.toolInput.slice(0, 3000) + '...'
           : event.toolInput;
         text += `\n<pre>${escapeHtml(input)}</pre>`;
       }
