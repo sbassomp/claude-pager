@@ -34,7 +34,7 @@ export async function transcribeAudio(
   const args = [getScriptPath(), audioPath];
   if (language) args.push(language);
 
-  const { stdout } = await exec('python3.10', args, { timeout: 60000 });
+  const { stdout } = await exec('python3', args, { timeout: 60000 });
   return JSON.parse(stdout.trim());
 }
 

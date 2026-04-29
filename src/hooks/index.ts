@@ -21,6 +21,8 @@ async function readStdin(): Promise<string> {
 }
 
 function getActiveWindowId(): number | undefined {
+  // xdotool is X11-only — skip on macOS/Windows where it can't help anyway
+  if (process.platform !== 'linux') return undefined;
   try {
     const out = execFileSync('xdotool', ['getactivewindow'], { timeout: 2000 });
     return parseInt(out.toString().trim(), 10) || undefined;

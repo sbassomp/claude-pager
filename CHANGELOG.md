@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2 (2026-04-29)
+
+### Cross-platform fixes
+
+- **macOS support** — `claude-pager start` no longer crashes on darwin. The injector factory now falls back to a VS Code-only composite on non-Linux platforms (introduced in 0.3.1's commit but not shipped).
+- **Hook xdotool guard** — skip `xdotool getactivewindow` on non-Linux platforms instead of relying on a silent catch.
+- **Voice transcription** — use `python3` instead of hardcoded `python3.10` for compatibility with macOS Homebrew installs.
+- **README** — document macOS prerequisites (`brew install tmux`).
+
 ## 0.3.1 (2026-04-01)
 
 ### Project Notes

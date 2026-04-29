@@ -43,9 +43,11 @@ Get paged on your phone when Claude Code needs input. Reply from Telegram or ntf
 ## Requirements
 
 - Node.js >= 20
-- tmux (for response injection)
-- Linux, WSL, or macOS (see [Windows support](#windows-support))
+- tmux (for response injection — `brew install tmux` on macOS, `apt install tmux` on Debian/Ubuntu)
+- Linux, macOS, or WSL (see [Windows support](#windows-support))
 - A Telegram bot or ntfy server for notifications
+
+> **macOS note:** the `xdotool` injector is X11-only and unavailable. Use the default `tmux` injector (recommended) or the [VS Code extension](vscode-extension/) for response injection. The daemon, dashboard, and notifications all work natively.
 
 ## Installation
 
