@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 (2026-04-29)
+
+### Fixes
+
+- **Redirect `/` to `/dashboard`** — root URL no longer returns 404
+- **Larger diff in Telegram permission prompts** — Edit prompts truncated diffs at 300 chars total, hiding the entire `+++ new` side. Hook now captures up to 1000 chars per side and Telegram displays up to 3000 chars (well below the 4096-char Telegram message limit)
+
 ## 0.3.2 (2026-04-29)
 
 ### Cross-platform fixes
