@@ -13,11 +13,9 @@ export function createInjector(type: 'auto' | 'tmux' | 'xdotool' | 'applescript'
     case 'xdotool':
       return new CompositeInjector([vscode, new XdotoolInjector()]);
     case 'auto':
-      if (process.platform === 'linux') {
-        return new CompositeInjector([vscode, new TmuxInjector()]);
-      }
-      // On non-Linux (macOS/Windows), VS Code injector is the only option
-      return new CompositeInjector([vscode]);
+      // tmux is cross-platform; TmuxInjector.resolve() returns false cleanly
+      // when tmux is absent, so the composite falls through to vscode.
+      return new CompositeInjector([vscode, new TmuxInjector()]);
     default:
       throw new Error(`Unknown injector type: ${type}`);
   }

@@ -2,8 +2,9 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createInterface } from 'node:readline';
+import { execFileSync } from 'node:child_process';
 import { loadConfig, saveConfig, ensureDataDir } from '../config/index.js';
-import type { ChannelConfig, CIConfig } from '../types.js';
+import type { ChannelConfig, CIConfig, RelayConfig } from '../types.js';
 
 const CLAUDE_SETTINGS_FILE = join(homedir(), '.claude', 'settings.json');
 
@@ -110,6 +111,8 @@ export async function setup(options: {
   }
 
   config.channel = channel;
+
+  config.injector = await setupInjector(config.injector);
 
   // CI/CD integration
   const ci = await setupCI(config.ci);
@@ -250,6 +253,36 @@ async function testNtfy(ntfy: { server: string; topic: string; user?: string; pa
     console.error(String(err));
     return false;
   }
+}
+
+function isTmuxInstalled(): boolean {
+  try {
+    execFileSync('tmux', ['-V'], { timeout: 1000, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function setupInjector(current: RelayConfig['injector']): Promise<RelayConfig['injector']> {
+  const tmuxAvailable = isTmuxInstalled();
+
+  console.log('\n--- Input injection ---');
+  if (tmuxAvailable) {
+    console.log('tmux: detected — replies can be injected into tmux panes.');
+  } else {
+    console.log('tmux: NOT detected.');
+    console.log('  → install tmux to enable terminal-based injection,');
+    console.log('  → or run Claude inside the VS Code extension (sole injection path otherwise).');
+  }
+
+  const choices = process.platform === 'linux' ? '(a)uto, (t)mux, (x)dotool' : '(a)uto, (t)mux';
+  const def = current === 'tmux' ? 't' : current === 'xdotool' ? 'x' : 'a';
+  const answer = (await prompt(`Injector mode: ${choices}?`, def)).toLowerCase();
+
+  if (answer.startsWith('t')) return 'tmux';
+  if (answer.startsWith('x') && process.platform === 'linux') return 'xdotool';
+  return 'auto';
 }
 
 async function setupCI(current?: CIConfig): Promise<CIConfig | undefined> {
