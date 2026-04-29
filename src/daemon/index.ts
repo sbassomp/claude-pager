@@ -5,6 +5,9 @@ import { createChannel } from '../channels/factory.js';
 import { createInjector } from '../injectors/factory.js';
 import { createServer } from './server.js';
 import { createChannelHandlers } from './handlers.js';
+import { closeAllSSEClients } from '../dashboard/sse.js';
+
+const SHUTDOWN_TIMEOUT_MS = 3000;
 
 const PID_FILE = () => join(getDataDir(), 'daemon.pid');
 
@@ -44,10 +47,19 @@ export async function startDaemon(): Promise<void> {
   channel.startListening(handlers);
 
   // Graceful shutdown
+  let shuttingDown = false;
   const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log('\nShutting down...');
     channel.stopListening();
-    await app.close();
+    closeAllSSEClients();
+    // Race app.close() against a hard timeout: long-poll/SSE/keep-alive sockets
+    // can otherwise keep Fastify's graceful close hanging indefinitely.
+    await Promise.race([
+      app.close(),
+      new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+    ]);
     try { unlinkSync(PID_FILE()); } catch { /* ignore */ }
     process.exit(0);
   };

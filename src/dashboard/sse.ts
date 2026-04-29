@@ -40,3 +40,14 @@ export function broadcastSSE(eventType = 'refresh'): void {
 export function sseClientCount(): number {
   return clients.size;
 }
+
+export function closeAllSSEClients(): void {
+  for (const client of clients) {
+    try { client.raw.end(); } catch { /* ignore */ }
+  }
+  clients.clear();
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
