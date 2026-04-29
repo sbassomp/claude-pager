@@ -23,4 +23,8 @@ export function registerDashboardRoutes(app: FastifyInstance): void {
   app.get('/dashboard', async (_request, reply) => {
     reply.type('text/html').send(DASHBOARD_HTML);
   });
+
+  app.get('/', async (_request, reply) => {
+    reply.redirect('/dashboard', 302);
+  });
 }
