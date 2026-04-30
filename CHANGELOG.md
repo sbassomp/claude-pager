@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.4 (2026-04-30)
+
+### Fixes
+
+- **tmux injector available in auto mode on all platforms** — previously the `auto` chain on macOS/Windows was VS Code only, so users without a reachable VS Code extension hit "Failed to inject message" with no fallback even when tmux was available. The composite now tries `[vscode, tmux]` regardless of platform; `TmuxInjector.resolve()` returns false cleanly when tmux is absent.
+- **Setup detects tmux** — new "Input injection" step in `claude-pager setup` detects tmux via `tmux -V` and prompts for the injector mode (auto / tmux / xdotool on Linux). Choice persisted in `config.injector`.
+- **Daemon shutdown hangs when SSE clients are connected** — the `/api/v1/sse` route hijacks the response and disables timeouts, so open SSE connections never drained on their own and `app.close()` waited forever on SIGTERM/SIGINT. Shutdown handler now closes SSE clients first, races `app.close()` against a 3s safety timeout, and is idempotent against repeat Ctrl+C.
+- **tmux mouse wheel scrolls scrollback** — in a tmux pane running a plain shell, the wheel was sending arrow up/down to the shell, navigating command history rather than scrolling. Mouse mode is now activated and `WheelUpPane` / `WheelDownPane` enter copy-mode for plain shells while passing events through for alternate-screen TUIs (Claude Code, vim, less, etc.).
+
 ## 0.3.3 (2026-04-29)
 
 ### Fixes
