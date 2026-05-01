@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5 (2026-05-02)
+
+### Fixes
+
+- **Stale sessions persist across reboots** — after a system reboot, dashboard cards from previous sessions remained because `isSessionAlive` only checked that a tmux pane with the recorded id (`%0`, `%1`, …) still existed. tmux reassigns those ids to new panes, so old sessions appeared "alive" pointing at unrelated panes (e.g. a `figma-audit` session showing on a pane that now hosts something else). Sessions registered before the last system boot are now treated as dead regardless of their tmux pane id.
+
 ## 0.3.4 (2026-04-30)
 
 ### Fixes

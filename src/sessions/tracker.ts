@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, readdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { uptime } from 'node:os';
 import { getDataDir, ensureDataDir } from '../config/index.js';
 import { safeJsonParse } from '../utils/json.js';
 import { isValidSessionId } from '../utils/validation.js';
@@ -62,7 +63,11 @@ function isTmuxPaneAlive(pane: string): boolean {
 }
 
 function isSessionAlive(info: SessionInfo): boolean {
-  // If we have a tmux pane, check that instead of the PID
+  // Sessions registered before the last system boot are always dead, even if
+  // their tmuxPane id (e.g. %1) has been reassigned to an unrelated new pane.
+  const bootTime = Date.now() - uptime() * 1000;
+  if (info.timestamp && info.timestamp < bootTime) return false;
+
   if (info.tmuxPane) {
     return isTmuxPaneAlive(info.tmuxPane);
   }
