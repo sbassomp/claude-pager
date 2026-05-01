@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6 (2026-05-02)
+
+### Fixes
+
+- **Recovered sessions show transcript and pending questions** — `claude-pager recover` registered sessions under synthetic ids (`recovered-1`, `recovered-2`, …) that didn't match any real Claude Code transcript. The dashboard then showed "No transcript", state stayed `unknown` (no "Working" badge), and pending permission prompts were invisible because pending events are filed under the real session UUID. Recover now scans `~/.claude/projects/<cwd>/*.jsonl`, sorts by mtime, and assigns each pane the freshest unclaimed transcript UUID. Falls back to `recovered-N` only when no transcript exists for the pane's cwd. Old `recovered-*` placeholders from previous runs are also dropped so panes don't appear twice.
+
 ## 0.3.5 (2026-05-02)
 
 ### Fixes
