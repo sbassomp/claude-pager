@@ -118,7 +118,7 @@ export async function getDashboardData(): Promise<DashboardResponse> {
             eventId: pendingQ.event.id,
             shortId: pendingQ.shortId,
             type: pendingQ.event.type,
-            message: pendingQ.event.message.slice(0, 200),
+            message: pendingQ.event.message.slice(0, 3000),
             toolName: pendingQ.event.toolName,
             toolInput: pendingQ.event.toolInput,
             context: pendingQ.event.context,

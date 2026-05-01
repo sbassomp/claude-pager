@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7 (2026-05-02)
+
+### Fixes
+
+- **Idle prompt question hidden by truncation** — the dashboard sliced messages to 200 chars on the server and 150 chars on the client, cutting off the actual question that Claude puts at the *end* of an idle_prompt (the hook already enriches with the last 3500 chars of the assistant message). Server cap is now 3000 chars and the client renders the message with `pre-wrap` and `max-height: 240px; overflow-y: auto` so long messages scroll inside the card instead of being chopped.
+
 ## 0.3.6 (2026-05-02)
 
 ### Fixes

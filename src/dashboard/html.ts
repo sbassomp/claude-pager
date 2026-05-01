@@ -797,7 +797,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         const toolInfo = q.toolName
           ? contextInfo + '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
             (q.toolInput ? '<br>' + formatToolInput(q.toolInput) : '')
-          : escapeHtml(q.message.slice(0, 150));
+          : '<div style="font-size:12px;color:#c9d1d9;white-space:pre-wrap;max-height:240px;overflow-y:auto">' + escapeHtml(q.message) + '</div>';
 
         const actions = isPermission
           ? \`<div class="action-row">
