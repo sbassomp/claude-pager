@@ -8,6 +8,7 @@ import { isSessionInjectable } from '../sessions/helpers.js';
 import { addNote, listNotes, getNote, removeNote, markSent, updateNoteText, reorderNotes, saveImage, setNoteImage, imagesDir } from '../notes/store.js';
 import type { Note } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
+import { logDaemon } from '../utils/log.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
 import { broadcastSSE } from '../dashboard/sse.js';
@@ -68,10 +69,12 @@ export async function createServer(deps: DaemonDeps) {
       const message = body.message;
 
       if (!isValidSessionId(sessionId)) {
+        logDaemon('rejected', sessionId || '-', 'invalid-session-id');
         return reply.status(400).send({ error: 'Invalid session_id format' });
       }
 
       if (!isValidEventType(type)) {
+        logDaemon('rejected', sessionId, `invalid-event-type=${type}`);
         return reply.status(400).send({ error: `Invalid event type: ${type}` });
       }
 
@@ -91,6 +94,7 @@ export async function createServer(deps: DaemonDeps) {
       };
 
       const shortId = addPending(event);
+      logDaemon('received', type, sessionId, event.id, `short=${shortId}`);
       broadcastSSE('refresh');
 
       // Send to channel in background — don't block the hook response
@@ -135,9 +139,11 @@ export async function createServer(deps: DaemonDeps) {
 
       const ok = await injector.sendResponse(session, response, question.event.type);
       if (!ok) {
+        logDaemon('inject-failed', question.event.sessionId, question.event.id);
         return reply.status(500).send({ error: 'Failed to inject response' });
       }
       removePending(question.event.id);
+      logDaemon('resolved', question.event.sessionId, question.event.id, `via=respond`);
       return { ok: true, matched: question.shortId, injected: true };
     },
   );
@@ -184,9 +190,11 @@ export async function createServer(deps: DaemonDeps) {
 
       const ok = await injector.sendResponse(session, response, question.event.type);
       if (!ok) {
+        logDaemon('inject-failed', question.event.sessionId, eventId);
         return reply.status(500).send({ error: 'Failed to inject response' });
       }
       removePending(eventId);
+      logDaemon('resolved', question.event.sessionId, eventId, `via=respond-to`);
       return { ok: true, eventId, injected: true };
     },
   );

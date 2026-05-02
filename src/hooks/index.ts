@@ -5,6 +5,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { registerSession } from '../sessions/tracker.js';
 import { ensureDataDir } from '../config/index.js';
+import { logHook } from '../utils/log.js';
 import type { SessionInfo } from '../types.js';
 
 // Skip if relay is explicitly disabled (e.g. when working on claude-pager itself)
@@ -158,6 +159,7 @@ async function handleSessionStart(): Promise<void> {
 
   ensureDataDir();
   registerSession(info);
+  logHook('session-start', info.sessionId, 'registered');
 
   // Register with VS Code extension for terminal mapping
   if (vscodePort) {
@@ -180,7 +182,9 @@ async function handleNotification(): Promise<void> {
 
   // Only forward permission_prompt and idle_prompt
   const type = data.notification_type;
+  const sid = data.session_id || '-';
   if (type !== 'permission_prompt' && type !== 'idle_prompt') {
+    logHook('notification', sid, `skipped:type=${type}`);
     return;
   }
 
@@ -212,9 +216,14 @@ async function handleNotification(): Promise<void> {
     });
     if (!res.ok) {
       console.error(`[hook] daemon responded ${res.status}`);
+      logHook('notification', sid, `error:status=${res.status}`);
+    } else {
+      logHook('notification', sid, `sent:${type}`);
     }
   } catch (err) {
     console.error('[hook] daemon unreachable:', err);
+    const msg = (err as Error).message || 'fetch-failed';
+    logHook('notification', sid, `error:${msg.replace(/\s+/g, '_').slice(0, 80)}`);
   }
 }
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.8 (2026-05-02)
+
+### Observability
+
+- **Persistent hook + daemon logs** — diagnosing missing prompts was guesswork because the hook's stderr was swallowed by Claude Code and the daemon had no log file. Two append-only logs are now written under `~/.claude-pager/`:
+  - `hook.log` — every `claude-pager-hook` invocation: `<ts> session-start <sessionId> registered` or `<ts> notification <sessionId> sent:<type> | skipped:type=<x> | error:<reason>`.
+  - `daemon.log` — incoming events and resolutions: `<ts> received <type> <sessionId> <eventId> short=<n>`, `<ts> rejected <sessionId> <reason>`, `<ts> resolved <sessionId> <eventId> via=<respond|respond-to>`, `<ts> inject-failed <sessionId> <eventId>`.
+  Logs never include message content (only metadata) and silently no-op if the filesystem is unwritable, so they cannot break operation.
+
 ## 0.3.7 (2026-05-02)
 
 ### Fixes
