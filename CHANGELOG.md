@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9 (2026-05-02)
+
+### UX
+
+- **Auto-scroll to the question in idle prompts** — long idle_prompt messages now auto-scroll to the bottom on every dashboard render, so the actual question (which Claude puts at the end of its last assistant message) is visible without manual scrolling. Affects only the scrollable message area added in 0.3.7; permission prompts are unchanged.
+
 ## 0.3.8 (2026-05-02)
 
 ### Observability

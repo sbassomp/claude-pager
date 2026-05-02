@@ -797,7 +797,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         const toolInfo = q.toolName
           ? contextInfo + '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
             (q.toolInput ? '<br>' + formatToolInput(q.toolInput) : '')
-          : '<div style="font-size:12px;color:#c9d1d9;white-space:pre-wrap;max-height:240px;overflow-y:auto">' + escapeHtml(q.message) + '</div>';
+          : '<div class="prompt-msg" style="font-size:12px;color:#c9d1d9;white-space:pre-wrap;max-height:240px;overflow-y:auto">' + escapeHtml(q.message) + '</div>';
 
         const actions = isPermission
           ? \`<div class="action-row">
@@ -1012,6 +1012,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       document.querySelectorAll('.card-title.expanded').forEach(el => expandedTitles.add(el.id));
 
       container.innerHTML = sortProjects(data.projects).map(renderProject).join('');
+
+      // Autoscroll prompt messages to bottom — Claude puts the actual question
+      // at the end of an idle_prompt, so reveal that part on render.
+      document.querySelectorAll('.prompt-msg').forEach(el => { el.scrollTop = el.scrollHeight; });
 
       // Restore expanded titles
       expandedTitles.forEach(id => {
