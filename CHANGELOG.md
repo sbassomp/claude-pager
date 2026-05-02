@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.10 (2026-05-02)
+
+### Fixes
+
+- **Permission prompt enriched with the previously executed tool's data** — Claude Code fires the Notification hook for a new permission prompt *before* writing the new `tool_use` to the transcript. The hook scanned backward and returned the most-recent `tool_use`, which was actually the previously *resolved* one (e.g. an `oidc-config.json` curl that just finished, while Claude was now asking permission for an unrelated TOKEN_RESPONSE command). Hook now collects every `tool_use_id` that already has a matching `tool_result` in the recent window and skips those when picking the pending tool. When no unresolved `tool_use` exists, the hook sends no tool data at all and the dashboard shows the generic message — not ideal but never wrong.
+- **Bash command body truncated at 400 chars in dashboard** — `formatToolInput` rendered Bash commands as a single-line `<code>` with `slice(0, 400)`. Long commands (heredocs, pipelines, smoke tests) were chopped well before the interesting part. Now rendered as `<pre>` with `pre-wrap`, `slice(0, 3000)`, and `max-height: 200px; overflow-y: auto` so long commands scroll inside the card.
+
 ## 0.3.9 (2026-05-02)
 
 ### UX

@@ -766,7 +766,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         }).join('\\n');
         return '<pre style="font-size:10px;color:#8b949e;word-break:break-all;white-space:pre-wrap;margin:4px 0;max-height:200px;overflow-y:auto">' + html + '</pre>';
       }
-      return '<code style="font-size:10px;color:#8b949e;word-break:break-all">' + escapeHtml(input.slice(0, 400)) + '</code>';
+      return '<pre style="font-size:10px;color:#8b949e;word-break:break-all;white-space:pre-wrap;margin:4px 0;max-height:200px;overflow-y:auto">' + escapeHtml(input.slice(0, 3000)) + '</pre>';
     }
 
     function stateLabel(state) {

@@ -42,12 +42,36 @@ function findToolUseInFile(filePath: string, maxLines: number): ToolUseInfo | nu
   try {
     const content = readFileSync(filePath, 'utf-8');
     const lines = content.trim().split('\n');
-    for (let i = lines.length - 1; i >= Math.max(0, lines.length - maxLines); i--) {
+    const windowStart = Math.max(0, lines.length - maxLines);
+
+    // Collect tool_use_ids that already have a corresponding tool_result —
+    // those tool_uses are completed and must NOT be reported as the pending one.
+    // Otherwise, when Claude fires the Notification hook before writing the new
+    // tool_use to the transcript, we would enrich the prompt with the previously
+    // executed tool's data.
+    const completed = new Set<string>();
+    for (let i = windowStart; i < lines.length; i++) {
+      try {
+        const entry = JSON.parse(lines[i]);
+        if (entry.type === 'user' && Array.isArray(entry.message?.content)) {
+          for (const block of entry.message.content) {
+            if (block.type === 'tool_result' && block.tool_use_id) {
+              completed.add(block.tool_use_id);
+            }
+          }
+        }
+      } catch {
+        // skip
+      }
+    }
+
+    for (let i = lines.length - 1; i >= windowStart; i--) {
       try {
         const entry = JSON.parse(lines[i]);
         if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
           for (const block of entry.message.content) {
             if (block.type === 'tool_use') {
+              if (block.id && completed.has(block.id)) continue;
               const input = block.input;
               let toolInput: string | undefined;
               if (input?.command) {
