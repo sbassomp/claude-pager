@@ -85,6 +85,18 @@ const HOOKS_CONFIG = {
       ],
     },
   ],
+  PreToolUse: [
+    {
+      matcher: '',
+      hooks: [
+        {
+          type: 'command',
+          command: 'claude-pager-hook pre-tool-use',
+          timeout: 1000,
+        },
+      ],
+    },
+  ],
 };
 
 export async function setup(options: {

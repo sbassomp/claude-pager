@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.11 (2026-05-03)
+
+### Capture pending tool data via PreToolUse hook
+
+- **New `claude-pager-hook pre-tool-use`** — captures `tool_name` + `tool_input` from Claude Code's PreToolUse payload (which fires *before* the permission prompt) into `~/.claude-pager/pre-tool-use/<sessionId>.json`. The Notification hook now reads this file first when handling a permission_prompt and falls back to the transcript scan only if no fresh capture is available. Captures older than 60s are ignored.
+- **`claude-pager setup` now installs the PreToolUse hook** in `~/.claude/settings.json`. Existing installs need a one-line addition (see README) — or just re-run `claude-pager setup`.
+- This finally fixes the long-standing case where Claude fires the Notification hook before writing the new `tool_use` to the transcript: the dashboard now shows the actual command body for Bash, Edit, Monitor, and any other tool, instead of either stale data (pre-0.3.10) or just the generic header (0.3.10).
+
 ## 0.3.10 (2026-05-02)
 
 ### Fixes

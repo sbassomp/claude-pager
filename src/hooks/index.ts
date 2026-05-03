@@ -1,12 +1,23 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
 import { registerSession } from '../sessions/tracker.js';
 import { ensureDataDir } from '../config/index.js';
 import { logHook } from '../utils/log.js';
 import type { SessionInfo } from '../types.js';
+
+const PRE_TOOL_DIR = join(homedir(), '.claude-pager', 'pre-tool-use');
+const PRE_TOOL_TTL_MS = 60_000; // discard captures older than 60s when reading
+
+interface PreToolCapture {
+  toolName: string;
+  toolInput?: string;
+  context?: string;
+  timestamp: number;
+}
 
 // Skip if relay is explicitly disabled (e.g. when working on claude-pager itself)
 if (process.env.CLAUDE_PAGER_DISABLED) {
@@ -36,6 +47,21 @@ interface ToolUseInfo {
   toolName?: string;
   toolInput?: string;
   context?: string;
+}
+
+function formatToolInput(input: unknown): string | undefined {
+  const i = input as { command?: string; old_string?: unknown; new_string?: unknown; file_path?: string; content?: unknown };
+  if (i?.command) return String(i.command);
+  if (i?.old_string != null && i?.new_string != null) {
+    const file = i.file_path || '';
+    const old = String(i.old_string).slice(0, 1000);
+    const nw = String(i.new_string).slice(0, 1000);
+    return `${file}\n--- old\n${old}\n+++ new\n${nw}`;
+  }
+  if (i?.file_path && i?.content) return `${i.file_path}\n${String(i.content).slice(0, 150)}`;
+  if (i?.file_path) return i.file_path;
+  if (typeof input === 'object' && input !== null) return JSON.stringify(input).slice(0, 2000);
+  return undefined;
 }
 
 function findToolUseInFile(filePath: string, maxLines: number): ToolUseInfo | null {
@@ -72,24 +98,7 @@ function findToolUseInFile(filePath: string, maxLines: number): ToolUseInfo | nu
           for (const block of entry.message.content) {
             if (block.type === 'tool_use') {
               if (block.id && completed.has(block.id)) continue;
-              const input = block.input;
-              let toolInput: string | undefined;
-              if (input?.command) {
-                toolInput = input.command;
-              } else if (input?.old_string != null && input?.new_string != null) {
-                // Edit tool — show diff-like view
-                const file = input.file_path || '';
-                const old = String(input.old_string).slice(0, 1000);
-                const nw = String(input.new_string).slice(0, 1000);
-                toolInput = `${file}\n--- old\n${old}\n+++ new\n${nw}`;
-              } else if (input?.file_path && input?.content) {
-                toolInput = `${input.file_path}\n${String(input.content).slice(0, 150)}`;
-              } else if (input?.file_path) {
-                toolInput = input.file_path;
-              } else if (typeof input === 'object') {
-                toolInput = JSON.stringify(input).slice(0, 200);
-              }
-              // Extract assistant text from same message as context
+              const toolInput = formatToolInput(block.input);
               const textBlocks = entry.message.content
                 .filter((b: { type: string; text?: string }) => b.type === 'text' && b.text)
                 .map((b: { text: string }) => b.text);
@@ -200,6 +209,52 @@ async function handleSessionStart(): Promise<void> {
   }
 }
 
+function preToolFile(sessionId: string): string {
+  return join(PRE_TOOL_DIR, `${sessionId}.json`);
+}
+
+function readPreToolCapture(sessionId: string): PreToolCapture | null {
+  try {
+    const file = preToolFile(sessionId);
+    if (!existsSync(file)) return null;
+    const data = JSON.parse(readFileSync(file, 'utf-8')) as PreToolCapture;
+    if (Date.now() - data.timestamp > PRE_TOOL_TTL_MS) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function clearPreToolCapture(sessionId: string): void {
+  try {
+    const file = preToolFile(sessionId);
+    if (existsSync(file)) unlinkSync(file);
+  } catch {
+    // ignore
+  }
+}
+
+async function handlePreToolUse(): Promise<void> {
+  const input = await readStdin();
+  const data = JSON.parse(input);
+  const sessionId = data.session_id;
+  const toolName = data.tool_name;
+  if (!sessionId || !toolName) return;
+
+  try {
+    mkdirSync(PRE_TOOL_DIR, { recursive: true });
+    const capture: PreToolCapture = {
+      toolName,
+      toolInput: formatToolInput(data.tool_input),
+      timestamp: Date.now(),
+    };
+    writeFileSync(preToolFile(sessionId), JSON.stringify(capture));
+    logHook('pre-tool-use', sessionId, `captured:${toolName}`);
+  } catch (err) {
+    logHook('pre-tool-use', sessionId, `error:${(err as Error).message?.slice(0, 60) || 'write-failed'}`);
+  }
+}
+
 async function handleNotification(): Promise<void> {
   const input = await readStdin();
   const data = JSON.parse(input);
@@ -213,19 +268,24 @@ async function handleNotification(): Promise<void> {
   }
 
   let enriched = data;
-  if (data.transcript_path) {
-    if (type === 'permission_prompt') {
-      // Enrich with tool name and input
+  if (type === 'permission_prompt') {
+    // Prefer the PreToolUse capture (carries the actual pending tool's data)
+    // over the transcript scan (which may lag behind when Claude has not yet
+    // written the new tool_use to the transcript).
+    const captured = readPreToolCapture(sid);
+    if (captured) {
+      enriched = { ...data, tool_name: captured.toolName, tool_input: captured.toolInput };
+      clearPreToolCapture(sid);
+    } else if (data.transcript_path) {
       const ctx = extractToolContext(data.transcript_path);
       if (ctx.toolName) {
         enriched = { ...data, tool_name: ctx.toolName, tool_input: ctx.toolInput, context: ctx.context };
       }
-    } else if (type === 'idle_prompt') {
-      // Enrich with last assistant message for context
-      const lastMsg = extractLastAssistantMessage(data.transcript_path);
-      if (lastMsg) {
-        enriched = { ...data, message: lastMsg };
-      }
+    }
+  } else if (type === 'idle_prompt' && data.transcript_path) {
+    const lastMsg = extractLastAssistantMessage(data.transcript_path);
+    if (lastMsg) {
+      enriched = { ...data, message: lastMsg };
     }
   }
 
@@ -266,7 +326,13 @@ switch (command) {
       process.exit(1);
     });
     break;
+  case 'pre-tool-use':
+    handlePreToolUse().catch(err => {
+      console.error('[hook] pre-tool-use error:', err);
+      process.exit(1);
+    });
+    break;
   default:
-    console.error(`Usage: claude-pager-hook <session-start|notification>`);
+    console.error(`Usage: claude-pager-hook <session-start|notification|pre-tool-use>`);
     process.exit(1);
 }
