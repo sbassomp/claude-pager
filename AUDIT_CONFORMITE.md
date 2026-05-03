@@ -1,20 +1,20 @@
 # Conformity Audit - claude-pager
 
-**Date**: 2026-03-19 (v2)
-**Project**: claude-pager v0.1.0
+**Date**: 2026-05-03 (v3)
+**Project**: claude-pager v0.3.14
 **Language**: TypeScript (Node.js >= 20)
 **Framework**: Fastify 5, Commander 13
-**Auditor**: Automated audit
+**Auditor**: Automated audit + external security review
 
 ---
 
-## Overall Score: 84/100
+## Overall Score: 88/100
 
 | Category | Score | Detail |
 |----------|-------|--------|
 | Code (SOLID, structure, readability) | 87/100 | Solid Strategy+Factory architecture, SRP respected, extracted utils, separated handlers |
-| Security | 78/100 | Input validation, execFileSync, safeJsonParse, memory caps. Some best-effort catches remain |
-| Tests | 75/100 | 36 tests, 7 files, coverage of utils/events/server. Missing injectors, hooks, voice |
+| Security | 85/100 | Critical Telegram chat_id filter added, insecure ntfy.sh default refused, secure-by-default with explicit opt-out + 6 tests locking it in |
+| Tests | 80/100 | 61 tests, 8 files, +25 tests since v2 (notes, dashboard, ntfy security guard). Injectors and hooks still uncovered |
 
 ---
 
@@ -22,13 +22,11 @@
 
 | Metric | Value |
 |--------|-------|
-| Source files (.ts) | 25 (excluding tests) |
-| Test files | 7 |
-| Total lines of code | 2,190 |
-| Test lines | 400 |
-| Test/code ratio | ~18% |
+| Source files (.ts) | 32 (excluding tests) |
+| Test files | 8 |
+| Total lines of code | ~3,400 |
 | Build | OK (zero errors) |
-| Tests | 36/36 pass |
+| Tests | 61/61 pass |
 | Lint (ESLint + typescript-eslint) | 0 errors |
 | npm audit | 0 vulnerabilities |
 
@@ -36,11 +34,11 @@
 
 ## Violation Summary
 
-| Priority | Count |
-|----------|-------|
-| Critical | 0 |
-| Important | 3 |
-| Minor | 5 |
+| Priority | Count | Status |
+|----------|-------|--------|
+| Critical | 0 | (1 found and fixed in v3 — see CRIT-05) |
+| Important | 3 | IMP-01/02/03 still open from v2 |
+| Minor | 5 | MIN-01/02/03/04/05 still open from v2 |
 
 ---
 
@@ -160,6 +158,17 @@ const info: SessionInfo = JSON.parse(readFileSync(path, 'utf-8'));
 
 ## Applied Fixes (history)
 
+### Session 2026-05-03 (v2 → v3) — External security review
+
+**Findings (all resolved in 0.3.14)**:
+
+- **CRIT-05 — Telegram bot accepted updates from any chat** *(file: `src/channels/telegram/provider.ts`)*
+  Handlers (`callback_query`, voice, reply, free message) dispatched on every incoming Telegram update without checking the chat origin. Anyone who guessed the bot's username could send a free-text message that the daemon injects into the active Claude session via `tmux send-keys` — effectively piloting the agent (run tools, read/write files, push commits). Fix: drop every update whose `chat.id` ≠ `config.chatId` in the poll loop, with a warning log. Type `TelegramUpdate.message` gained `chat: { id }` so the check is type-safe.
+- **IMP-04 — Default `ntfy.sh` topic accepted without auth** *(file: `src/channels/ntfy/provider.ts`)*
+  `claude-pager setup` defaults to `https://ntfy.sh` and the README marked auth as "recommended". Without auth, anyone who guesses the topic can publish a message that the daemon treats as a response and injects into the terminal. Fix: `NtfyProvider` constructor now throws on `*.ntfy.sh` host with no `token` / `user+password`. Three escape hatches: `channel.ntfy.token` (recommended), `channel.ntfy.user + .password`, or `channel.ntfy.allowInsecure: true` / `CLAUDE_PAGER_ALLOW_INSECURE_NTFY=1` for users who accept the risk. 6 unit tests lock in the behavior.
+- **MIN-06 — Source comment leaked developer username and private project name** *(file: `src/dashboard/transcript.ts:24`)*
+  Example comment hardcoded `seb` and `myoffice`. Replaced with the generic `-home-user-dev-myproject` placeholder.
+
 ### Session 2026-03-19 (v1 → v2)
 
 **Critical fixes**:
@@ -204,3 +213,4 @@ const info: SessionInfo = JSON.parse(readFileSync(path, 'utf-8'));
 |------|------|----------|-------|---------|-------|
 | 2026-03-19 v1 | 68/100 | 45/100 | 55/100 | 62/100 | Initial audit |
 | 2026-03-19 v2 | 87/100 | 78/100 | 75/100 | 84/100 | +22 pts — 4 critical resolved, 8 important resolved, ESLint, +16 tests |
+| 2026-05-03 v3 | 87/100 | 85/100 | 80/100 | 88/100 | +4 pts — 1 critical (Telegram chat_id) and 1 important (ntfy default) found and fixed in same release, +6 security tests |
