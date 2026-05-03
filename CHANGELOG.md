@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.14 (2026-05-03)
+
+### Security
+
+- **CRITICAL — Telegram bot now filters by `chat_id`** — handlers (`callback_query`, voice, reply, free message) accepted updates from any Telegram user that started a conversation with the bot. An attacker who guessed the bot username could pilot Claude (free message → injected via tmux `send-keys` into the active session), add notes, or trigger expensive voice transcription on the host. The poll loop now drops every update whose `chat.id` does not match `config.chatId`.
+- **`ntfy.sh` default topic refused without auth** — starting with `channel.ntfy.server = ntfy.sh` and no token / basic auth would let anyone who guessed the topic publish a message that the daemon treats as a response and injects into your terminal. The daemon now refuses to start in that configuration. Either configure auth, self-host ntfy, or — only if you accept the risk — set `channel.ntfy.allowInsecure: true` in the config (or `CLAUDE_PAGER_ALLOW_INSECURE_NTFY=1`).
+
+### Fixes
+
+- **Privacy leak in source comment** — `src/dashboard/transcript.ts` had an example comment hardcoded with the developer's username and a private project name. Replaced with a generic `-home-user-dev-myproject` placeholder.
+
 ## 0.3.13 (2026-05-03)
 
 ### Fixes

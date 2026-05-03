@@ -24,6 +24,10 @@ export interface NtfyConfig {
   user?: string;
   password?: string;
   token?: string;
+  // Set to true to opt in to a public ntfy.sh topic without auth — anyone who
+  // guesses the topic can publish and have text injected into your terminal.
+  // Off by default to prevent accidental insecure setups.
+  allowInsecure?: boolean;
 }
 
 export interface TelegramConfig {

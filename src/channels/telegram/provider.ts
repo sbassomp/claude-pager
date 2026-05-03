@@ -16,9 +16,11 @@ interface TelegramUpdate {
     id: string;
     data?: string;
     message?: { message_id: number; chat: { id: number } };
+    from?: { id: number };
   };
   message?: {
     message_id: number;
+    chat: { id: number };
     text?: string;
     voice?: { file_id: string; duration: number };
     reply_to_message?: { message_id: number };
@@ -173,6 +175,17 @@ export class TelegramProvider implements ChannelProvider {
 
         for (const update of data.result) {
           this.lastUpdateId = update.update_id + 1;
+
+          // Authorization: only the configured chat is allowed to send anything
+          // to the bot. Drops messages from any other Telegram user that
+          // happens to start a conversation with the bot — without this guard,
+          // they could pilot the agent (free messages → tmux send-keys), add
+          // notes, or trigger expensive voice transcription on the host.
+          const chatId = update.callback_query?.message?.chat.id ?? update.message?.chat.id;
+          if (chatId !== undefined && chatId !== this.config.chatId) {
+            console.warn(`[telegram] dropped update from unauthorized chat ${chatId}`);
+            continue;
+          }
 
           if (update.callback_query) {
             await this.handleCallback(update.callback_query, listeners);

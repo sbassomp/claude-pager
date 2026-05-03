@@ -20,7 +20,8 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 
 function projectDir(cwd: string): string {
-  // ~/.claude/projects/-home-seb-dev-myoffice/
+  // Claude Code encodes the cwd by replacing / with -, e.g.
+  // /home/user/dev/myproject → ~/.claude/projects/-home-user-dev-myproject/
   const encoded = cwd.replace(/\//g, '-');
   return join(homedir(), '.claude', 'projects', encoded);
 }

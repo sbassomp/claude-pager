@@ -9,6 +9,30 @@ export class NtfyProvider implements ChannelProvider {
 
   constructor(config: NtfyConfig) {
     this.config = config;
+    NtfyProvider.assertSecure(config);
+  }
+
+  // A public ntfy.sh topic with no auth lets anyone who guesses the topic
+  // publish messages that the daemon will treat as a response and inject into
+  // tmux. Refuse to start in that configuration unless the operator opts in
+  // explicitly (config.allowInsecure or env CLAUDE_PAGER_ALLOW_INSECURE_NTFY=1).
+  private static assertSecure(config: NtfyConfig): void {
+    if (config.allowInsecure || process.env.CLAUDE_PAGER_ALLOW_INSECURE_NTFY === '1') return;
+    const hasAuth = !!config.token || !!(config.user && config.password);
+    if (hasAuth) return;
+    let host: string;
+    try { host = new URL(config.server).hostname; }
+    catch { host = config.server; }
+    if (host === 'ntfy.sh' || host.endsWith('.ntfy.sh')) {
+      throw new Error(
+        `Refusing to start: ntfy.sh topic "${config.topic}" has no auth. ` +
+        `Anyone who guesses this topic can inject text into your terminal. ` +
+        `Either add a token (channel.ntfy.token) or HTTP basic auth ` +
+        `(channel.ntfy.user + .password), self-host ntfy, or — only if you ` +
+        `accept the risk — set channel.ntfy.allowInsecure: true (or env ` +
+        `CLAUDE_PAGER_ALLOW_INSECURE_NTFY=1).`,
+      );
+    }
   }
 
   private get topicUrl(): string {
