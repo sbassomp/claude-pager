@@ -114,16 +114,31 @@ export async function getDashboardData(): Promise<DashboardResponse> {
           sessionId: session.sessionId,
           title: transcript.title,
           state,
-          pendingQuestion: pendingQ ? {
-            eventId: pendingQ.event.id,
-            shortId: pendingQ.shortId,
-            type: pendingQ.event.type,
-            message: pendingQ.event.message.slice(0, 3000),
-            toolName: pendingQ.event.toolName,
-            toolInput: pendingQ.event.toolInput,
-            context: pendingQ.event.context,
-            agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
-          } : undefined,
+          pendingQuestion: pendingQ ? (() => {
+            // For idle_prompts the event message was frozen at notification
+            // time. Claude often keeps adding text after that, so prefer the
+            // freshly-extracted last assistant text from the transcript when
+            // available. The question Claude asks is always at the *end*
+            // of an idle_prompt, so slice from the end on overflow rather
+            // than from the start.
+            const isIdle = pendingQ.event.type === 'idle_prompt';
+            const raw = (isIdle && transcript.lastAssistantText)
+              ? transcript.lastAssistantText
+              : pendingQ.event.message;
+            const message = raw.length > 3000
+              ? (isIdle ? raw.slice(-3000) : raw.slice(0, 3000))
+              : raw;
+            return {
+              eventId: pendingQ.event.id,
+              shortId: pendingQ.shortId,
+              type: pendingQ.event.type,
+              message,
+              toolName: pendingQ.event.toolName,
+              toolInput: pendingQ.event.toolInput,
+              context: pendingQ.event.context,
+              agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
+            };
+          })() : undefined,
           git,
           needsTesting: false, // computed at project level after CI fetch
           committed: git.modifiedFiles === 0 || transcript.recentCommit,

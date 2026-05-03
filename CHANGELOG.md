@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.13 (2026-05-03)
+
+### Fixes
+
+- **Idle prompt content stale and chopped on the wrong end** — the pending event's message is frozen at notification time, but Claude often keeps adding text afterwards (more tool calls, follow-up explanations, then the actual question). The dashboard's `slice(0, 3000)` then chopped the *end* — exactly where Claude's question lives — leaving the user with a truncated mid-sentence ("…**Phase A po"). Two changes:
+  - `parseTranscript` now also exposes `lastAssistantText`, walking backward across multiple assistant messages until the next real user prompt (same logic the hook uses).
+  - For `idle_prompt` pending events, the enricher prefers `transcript.lastAssistantText` over the frozen `event.message` and slices from the *end* on overflow so the question is preserved. Permission prompts keep `slice(0, 3000)` since their relevant data is at the start.
+
 ## 0.3.12 (2026-05-03)
 
 ### Fixes

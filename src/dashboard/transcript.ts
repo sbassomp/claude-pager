@@ -9,6 +9,7 @@ export interface TranscriptInfo {
   gitBranch: string;
   recentCommit: boolean;
   recentPush: boolean;
+  lastAssistantText?: string;
 }
 
 interface CacheEntry {
@@ -132,6 +133,38 @@ function detectCommitPush(lines: string[]): { recentCommit: boolean; recentPush:
   return { recentCommit, recentPush };
 }
 
+function extractLastAssistantText(lines: string[]): string | undefined {
+  // Walk backward across multiple assistant messages, prepending each text
+  // block, and stop at the next real user prompt (any user entry whose content
+  // is not exclusively tool_result blocks). Mirrors the hook-side enrichment
+  // so the dashboard can refresh the idle_prompt content as Claude keeps
+  // talking after the notification was originally fired.
+  const collected: string[] = [];
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 60); i--) {
+    try {
+      const entry = JSON.parse(lines[i]);
+      if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
+        const textBlocks = entry.message.content
+          .filter((b: { type: string; text?: string }) => b.type === 'text' && b.text)
+          .map((b: { text: string }) => b.text);
+        if (textBlocks.length > 0) {
+          collected.unshift(textBlocks.join('\n'));
+        }
+      } else if (entry.type === 'user' && Array.isArray(entry.message?.content)) {
+        const isRealUserPrompt = entry.message.content.some(
+          (b: { type: string }) => b.type !== 'tool_result',
+        );
+        if (isRealUserPrompt) break;
+      }
+    } catch {
+      // skip
+    }
+  }
+  if (collected.length === 0) return undefined;
+  const full = collected.join('\n\n');
+  return full.length > 3500 ? full.slice(-3500) : full;
+}
+
 function parseTranscript(filePath: string): TranscriptInfo {
   const content = readFileSync(filePath, 'utf-8');
   const lines = content.trim().split('\n').filter(Boolean);
@@ -209,8 +242,9 @@ function parseTranscript(filePath: string): TranscriptInfo {
   }
 
   const { recentCommit, recentPush } = detectCommitPush(lines);
+  const lastAssistantText = extractLastAssistantText(lines);
 
-  return { title, state, lastTimestamp, gitBranch, recentCommit, recentPush };
+  return { title, state, lastTimestamp, gitBranch, recentCommit, recentPush, lastAssistantText };
 }
 
 export function readTranscriptInfo(sessionId: string, cwd: string): TranscriptInfo {
