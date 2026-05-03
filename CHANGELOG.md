@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.12 (2026-05-03)
+
+### Fixes
+
+- **Idle prompt context truncated to the last assistant follow-up** — `extractLastAssistantMessage` returned only the very last assistant message, which is often a short follow-up after a tool call (e.g. "App fermée. J'attends ton choix entre A, B, ou A+B avant de coder.") while the actual question with options A/B was several entries earlier, separated by a `tool_use` and a `tool_result`. The hook now walks backward across multiple assistant messages, skipping `tool_result`/`attachment`/`system` entries, and stops at the next real user prompt — restoring the full context the user is being asked to react to. Cap remains 3500 chars.
+
 ## 0.3.11 (2026-05-03)
 
 ### Capture pending tool data via PreToolUse hook

@@ -148,8 +148,16 @@ function extractLastAssistantMessage(transcriptPath: string): string | undefined
   try {
     const content = readFileSync(transcriptPath, 'utf-8');
     const lines = content.trim().split('\n');
-    // Read last entries to find the most recent assistant text
-    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+
+    // Walk backward, collecting assistant text from every assistant message
+    // since the last real user input. tool_result + attachment + system entries
+    // are skipped — only a user message that contains something other than
+    // tool_result counts as a real user prompt and stops the collection.
+    // This way an idle prompt like "App fermée. J'attends ton choix." still
+    // shows the long explanation that preceded the tool_use, instead of just
+    // the short follow-up.
+    const collected: string[] = [];
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 60); i--) {
       try {
         const entry = JSON.parse(lines[i]);
         if (entry.type === 'assistant' && Array.isArray(entry.message?.content)) {
@@ -157,14 +165,21 @@ function extractLastAssistantMessage(transcriptPath: string): string | undefined
             .filter((b: { type: string; text?: string }) => b.type === 'text' && b.text)
             .map((b: { text: string }) => b.text);
           if (textBlocks.length > 0) {
-            const full = textBlocks.join('\n');
-            return full.length > 3500 ? full.slice(-3500) : full;
+            collected.unshift(textBlocks.join('\n'));
           }
+        } else if (entry.type === 'user' && Array.isArray(entry.message?.content)) {
+          const isRealUserPrompt = entry.message.content.some(
+            (b: { type: string }) => b.type !== 'tool_result',
+          );
+          if (isRealUserPrompt) break;
         }
       } catch {
         // skip
       }
     }
+    if (collected.length === 0) return undefined;
+    const full = collected.join('\n\n');
+    return full.length > 3500 ? full.slice(-3500) : full;
   } catch {
     // transcript not readable
   }
