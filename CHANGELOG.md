@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.15 (2026-05-03)
+
+### UX
+
+- **Show Claude's last reply on idle cards** — when Claude finishes a turn the dashboard would only display the 2-line clamped title; the actual answer + the question at its end were invisible until Claude Code fired its 60s `idle_prompt` notification (and they disappeared again as soon as the user replied to it). The card now always renders the latest assistant text in a scrollable area when the session is not actively working and has no pending event, autoscrolled to the bottom so the question stays in view.
+
 ## 0.3.14 (2026-05-03)
 
 ### Security

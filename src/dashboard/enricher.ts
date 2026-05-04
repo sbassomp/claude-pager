@@ -41,6 +41,12 @@ export interface DashboardSession {
     context?: string;
     agoSeconds: number;
   };
+  // Last assistant text from the transcript, surfaced in the card body when
+  // there is no pending event so the user can see Claude's most recent answer
+  // (and any question at the end of it) before Claude Code fires its 60s
+  // idle_prompt notification — or after the previous notification has been
+  // resolved. Omitted while Claude is actively working.
+  lastAssistantText?: string;
   git: GitInfo;
   needsTesting: boolean;
   committed: boolean;
@@ -139,6 +145,15 @@ export async function getDashboardData(): Promise<DashboardResponse> {
               agoSeconds: Math.floor((Date.now() - pendingQ.notifiedAt) / 1000),
             };
           })() : undefined,
+          // Surface the latest assistant text when the session is not
+          // actively working AND there is no pending event to render. This
+          // covers the gap between Claude finishing a turn and Claude Code
+          // firing its idle_prompt notification 60s later.
+          lastAssistantText: (
+            !pendingQ
+            && state !== 'working'
+            && transcript.lastAssistantText
+          ) ? transcript.lastAssistantText.slice(-3000) : undefined,
           git,
           needsTesting: false, // computed at project level after CI fetch
           committed: git.modifiedFiles === 0 || transcript.recentCommit,

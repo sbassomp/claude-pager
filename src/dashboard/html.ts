@@ -866,6 +866,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             return '';
           })()}
           \${pending}
+          \${s.lastAssistantText
+            ? '<div class="prompt-msg" style="font-size:12px;color:#c9d1d9;white-space:pre-wrap;max-height:240px;overflow-y:auto;background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:8px 10px;margin:8px 0">' + escapeHtml(s.lastAssistantText) + '</div>'
+            : ''}
           \${idleInput}
           <div class="card-footer">
             \${gitParts.join(' ')}
