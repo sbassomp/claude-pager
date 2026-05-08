@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.16 (2026-05-04)
+
+### UX
+
+- **Projects with a pending question float to the top** — until now, pinned projects always sat at the top of the dashboard regardless of state, so an unpinned project asking for permission could be hidden below pinned-but-quiet projects. Sort is now two-tier: any project with at least one session in `waiting_permission` or `waiting_input` is shown first; pinned order is preserved within each tier so an important pinned project keeps its place when nothing's asking.
+
 ## 0.3.15 (2026-05-03)
 
 ### UX

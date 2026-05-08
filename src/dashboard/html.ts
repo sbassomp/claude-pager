@@ -715,16 +715,25 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
     function sortProjects(projects) {
       const pinned = getPinnedOrder();
+      const hasQuestion = (p) => p.sessions.some(s =>
+        s.state === 'waiting_permission' || s.state === 'waiting_input'
+      );
       return [...projects].sort((a, b) => {
+        // Tier 1: projects with a session asking something float to the top.
+        const aQ = hasQuestion(a);
+        const bQ = hasQuestion(b);
+        if (aQ !== bQ) return aQ ? -1 : 1;
+
+        // Within the same tier, pinned projects keep their pinned order.
         const aPin = pinned.indexOf(a.name);
         const bPin = pinned.indexOf(b.name);
         const aIsPinned = aPin >= 0;
         const bIsPinned = bPin >= 0;
-        // Pinned projects first, in their pinned order
         if (aIsPinned && bIsPinned) return aPin - bPin;
         if (aIsPinned) return -1;
         if (bIsPinned) return 1;
-        // Unpinned: keep the original sort (by state)
+
+        // Otherwise preserve backend's state-based ordering.
         return 0;
       });
     }
