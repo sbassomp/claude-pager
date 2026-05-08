@@ -9,6 +9,7 @@ import { addNote, listNotes, getNote, removeNote, markSent, updateNoteText, reor
 import type { Note } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { logDaemon } from '../utils/log.js';
+import { registerAuth } from './auth.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
 import { broadcastSSE } from '../dashboard/sse.js';
@@ -50,8 +51,10 @@ const respondBodySchema = {
 } as const;
 
 export async function createServer(deps: DaemonDeps) {
-  const { channel, injector } = deps;
-  const app = Fastify({ logger: true });
+  const { config, channel, injector } = deps;
+  const app = Fastify({ logger: true, trustProxy: true });
+
+  registerAuth(app, config.dashboard);
 
   // Health check
   app.get('/api/v1/health', async () => {

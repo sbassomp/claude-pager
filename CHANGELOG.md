@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.17 (2026-05-08)
+
+### Features
+
+- **Expose the dashboard beyond `localhost` with HTTP Basic Auth** — until now the daemon hard-coded `host: '127.0.0.1'`, so the dashboard could only be reached from the host itself. New `dashboard` config block:
+  ```jsonc
+  {
+    "dashboard": {
+      "bind": "0.0.0.0",                       // or LAN address
+      "basicAuth": { "user": "u", "password": "..." }
+    }
+  }
+  ```
+  - The daemon refuses to start when `bind` is non-loopback and no `basicAuth` is set, mirroring the ntfy.sh hardening from 0.3.14. Escape hatch for "behind a trusted reverse proxy" setups: `dashboard.allowInsecure: true`.
+  - Loopback requests (`127.0.0.1`, `::1`, `::ffff:127.0.0.1`) bypass the auth check, so `claude-pager-hook` keeps posting events without sharing credentials.
+  - Authentication uses `crypto.timingSafeEqual` on both user and password — no length or content side-channel.
+  - 19 new tests cover the auth helpers and the startup-config check.
+
+### Notes
+
+- For LAN-only access, Basic Auth without TLS is acceptable on a trusted network. For exposure beyond your LAN, put the daemon behind a reverse proxy with HTTPS (set `dashboard.allowInsecure: true` and let the proxy handle auth), or use a VPN like Tailscale and keep the default loopback bind.
+
 ## 0.3.16 (2026-05-04)
 
 ### UX

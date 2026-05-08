@@ -10,6 +10,19 @@ export interface RelayConfig {
   injector: 'auto' | 'tmux' | 'xdotool' | 'applescript';
   dataDir: string;
   ci?: CIConfig;
+  dashboard?: DashboardConfig;
+}
+
+export interface DashboardConfig {
+  // Interface to bind on. Default '127.0.0.1' (localhost only).
+  // Set to '0.0.0.0' (or a specific LAN address) to expose the dashboard
+  // beyond the host. When non-loopback, basicAuth is required unless
+  // allowInsecure is true.
+  bind?: string;
+  basicAuth?: { user: string; password: string };
+  // Skip the auth-required check when binding to a non-loopback address.
+  // Use only behind a trusted reverse proxy that handles auth itself.
+  allowInsecure?: boolean;
 }
 
 export interface ChannelConfig {

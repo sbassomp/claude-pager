@@ -6,6 +6,7 @@ import { createInjector } from '../injectors/factory.js';
 import { createServer } from './server.js';
 import { createChannelHandlers } from './handlers.js';
 import { closeAllSSEClients } from '../dashboard/sse.js';
+import { assertDashboardConfig } from './auth.js';
 
 const SHUTDOWN_TIMEOUT_MS = 3000;
 
@@ -34,6 +35,7 @@ export async function startDaemon(): Promise<void> {
 
   ensureDataDir();
   const config = loadConfig();
+  assertDashboardConfig(config.dashboard);
   const channel = createChannel(config.channel);
   const injector = createInjector(config.injector);
 
@@ -67,9 +69,14 @@ export async function startDaemon(): Promise<void> {
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
+  const host = config.dashboard?.bind || '127.0.0.1';
   try {
-    await app.listen({ port: config.port, host: '127.0.0.1' });
-    console.log(`claude-pager daemon listening on 127.0.0.1:${config.port}`);
+    await app.listen({ port: config.port, host });
+    console.log(`claude-pager daemon listening on ${host}:${config.port}`);
+    if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+      const auth = config.dashboard?.basicAuth ? 'basic auth on' : 'NO AUTH (allowInsecure)';
+      console.log(`[daemon] dashboard exposed beyond loopback — ${auth}`);
+    }
   } catch (err) {
     try { unlinkSync(PID_FILE()); } catch { /* ignore */ }
     throw err;
