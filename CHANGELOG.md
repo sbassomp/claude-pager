@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.18 (2026-05-11)
+
+### Features
+
+- **`claude-pager run` auto-starts the daemon** — running `claude-pager run` in a fresh terminal no longer silently produces a Claude session with no notifications because the daemon wasn't up. `run` now checks the pidfile and, if no daemon is alive, spawns `claude-pager start` as a detached background process (`child_process.spawn` with `detached: true` + `unref()`) that outlives the command and the tmux session. Works on macOS and Linux — no systemd/launchd needed. If a daemon is already running (including one managed by systemd/launchd, since the pidfile is shared) nothing is spawned. The detached daemon's stdout/stderr go to `~/.claude-pager/daemon-stdout.log`.
+
 ## 0.3.17 (2026-05-08)
 
 ### Features

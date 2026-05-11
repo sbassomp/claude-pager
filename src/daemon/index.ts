@@ -1,4 +1,5 @@
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, openSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { loadConfig, getDataDir, ensureDataDir } from '../config/index.js';
 import { createChannel } from '../channels/factory.js';
@@ -23,6 +24,29 @@ export function isDaemonRunning(): { running: boolean; pid?: number } {
   } catch {
     unlinkSync(pidFile);
     return { running: false };
+  }
+}
+
+// Ensure the daemon is up: if not running, spawn `claude-pager start` as a
+// detached background process that survives the caller exiting (and the tmux
+// session ending). Works on macOS and Linux without systemd/launchd.
+export function ensureDaemonRunning(): 'already-running' | 'started' | 'spawn-failed' {
+  const { running } = isDaemonRunning();
+  if (running) return 'already-running';
+
+  try {
+    ensureDataDir();
+    const logPath = join(getDataDir(), 'daemon-stdout.log');
+    const out = openSync(logPath, 'a');
+    // process.argv[1] is this CLI entry script; re-invoke it with `start`.
+    const child = spawn(process.execPath, [process.argv[1], 'start'], {
+      detached: true,
+      stdio: ['ignore', out, out],
+    });
+    child.unref();
+    return 'started';
+  } catch {
+    return 'spawn-failed';
   }
 }
 

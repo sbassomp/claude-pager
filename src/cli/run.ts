@@ -1,7 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
+import { ensureDaemonRunning } from '../daemon/index.js';
 
 export function run(args: string[]): void {
+  // Make sure the relay daemon is up before launching Claude Code — otherwise
+  // notifications (Telegram/ntfy) have nowhere to go. Spawned detached so it
+  // outlives this command and the tmux session.
+  const daemonState = ensureDaemonRunning();
+  if (daemonState === 'started') {
+    console.log('Started claude-pager daemon in the background.');
+  } else if (daemonState === 'spawn-failed') {
+    console.warn('Warning: could not auto-start the claude-pager daemon — run `claude-pager start` manually.');
+  }
+
   // Generate a session name from cwd
   const project = basename(process.cwd());
   const sessionName = `claude-${project}-${process.pid}`;
