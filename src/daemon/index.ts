@@ -27,27 +27,51 @@ export function isDaemonRunning(): { running: boolean; pid?: number } {
   }
 }
 
-// Ensure the daemon is up: if not running, spawn `claude-pager start` as a
-// detached background process that survives the caller exiting (and the tmux
-// session ending). Works on macOS and Linux without systemd/launchd.
-export function ensureDaemonRunning(): 'already-running' | 'started' | 'spawn-failed' {
+export type EnsureDaemonResult = 'already-running' | 'started' | 'spawn-failed' | 'unhealthy';
+
+async function isHealthy(port: number): Promise<boolean> {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/v1/health`, {
+      signal: AbortSignal.timeout(800),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// Ensure the daemon is up. First test its presence via the pidfile + a real
+// /api/v1/health probe — if it answers, do nothing. Otherwise spawn
+// `claude-pager start` as a detached background process that survives the
+// caller exiting (and the tmux session ending), then poll /api/v1/health for
+// a few seconds to confirm it actually came up (it can refuse to start, e.g.
+// on an insecure ntfy.sh config). Works on macOS and Linux without
+// systemd/launchd.
+export async function ensureDaemonRunning(): Promise<EnsureDaemonResult> {
+  const port = loadConfig().port;
+
   const { running } = isDaemonRunning();
-  if (running) return 'already-running';
+  if (running && await isHealthy(port)) return 'already-running';
 
   try {
     ensureDataDir();
-    const logPath = join(getDataDir(), 'daemon-stdout.log');
-    const out = openSync(logPath, 'a');
+    const out = openSync(join(getDataDir(), 'daemon-stdout.log'), 'a');
     // process.argv[1] is this CLI entry script; re-invoke it with `start`.
     const child = spawn(process.execPath, [process.argv[1], 'start'], {
       detached: true,
       stdio: ['ignore', out, out],
     });
     child.unref();
-    return 'started';
   } catch {
     return 'spawn-failed';
   }
+
+  // Poll until it answers, or give up after ~4s.
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    if (await isHealthy(port)) return 'started';
+  }
+  return 'unhealthy';
 }
 
 export async function startDaemon(): Promise<void> {

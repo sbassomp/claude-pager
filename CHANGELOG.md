@@ -1,10 +1,18 @@
 # Changelog
 
+## 0.3.19 (2026-05-11)
+
+### Fixes
+
+- **`claude-pager run` auto-start now verifies the daemon actually came up** — 0.3.18 spawned the daemon and immediately reported success, so if the daemon refused to start (e.g. an insecure `ntfy.sh` config from 0.3.14 or a bad `dashboard.bind` from 0.3.17) `run` lied and the user got no notifications with no clue why. Now:
+  - presence is probed with a real `GET /api/v1/health` (not just the pidfile) before deciding to spawn;
+  - after spawning, `/api/v1/health` is polled for ~4 s and the result is reported honestly — `✓ Started`, `⚠ spawned but not responding` (with the last 8 lines of `~/.claude-pager/daemon-stdout.log`), or `⚠ could not auto-start` (spawn itself failed).
+
 ## 0.3.18 (2026-05-11)
 
 ### Features
 
-- **`claude-pager run` auto-starts the daemon** — running `claude-pager run` in a fresh terminal no longer silently produces a Claude session with no notifications because the daemon wasn't up. `run` now checks the pidfile and, if no daemon is alive, spawns `claude-pager start` as a detached background process (`child_process.spawn` with `detached: true` + `unref()`) that outlives the command and the tmux session. Works on macOS and Linux — no systemd/launchd needed. If a daemon is already running (including one managed by systemd/launchd, since the pidfile is shared) nothing is spawned. The detached daemon's stdout/stderr go to `~/.claude-pager/daemon-stdout.log`.
+- **`claude-pager run` auto-starts the daemon** — running `claude-pager run` in a fresh terminal no longer silently produces a Claude session with no notifications because the daemon wasn't up. `run` now checks the pidfile and, if no daemon is alive, spawns `claude-pager start` as a detached background process (`child_process.spawn` with `detached: true` + `unref()`) that outlives the command and the tmux session. Works on macOS and Linux — no systemd/launchd needed. If a daemon is already running (including one managed by systemd/launchd, since the pidfile is shared) nothing is spawned. The detached daemon's stdout/stderr go to `~/.claude-pager/daemon-stdout.log`. *(0.3.18 was a git tag only and never published to npm — superseded by 0.3.19 which adds the health check.)*
 
 ## 0.3.17 (2026-05-08)
 

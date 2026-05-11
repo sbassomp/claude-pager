@@ -1,16 +1,31 @@
 import { execFileSync } from 'node:child_process';
-import { basename } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
 import { ensureDaemonRunning } from '../daemon/index.js';
+import { getDataDir } from '../config/index.js';
 
-export function run(args: string[]): void {
+function tailDaemonLog(): string {
+  try {
+    const lines = readFileSync(join(getDataDir(), 'daemon-stdout.log'), 'utf-8').trim().split('\n');
+    return lines.slice(-8).join('\n');
+  } catch {
+    return '(no daemon-stdout.log)';
+  }
+}
+
+export async function run(args: string[]): Promise<void> {
   // Make sure the relay daemon is up before launching Claude Code — otherwise
-  // notifications (Telegram/ntfy) have nowhere to go. Spawned detached so it
-  // outlives this command and the tmux session.
-  const daemonState = ensureDaemonRunning();
+  // notifications (Telegram/ntfy) have nowhere to go. We probe /api/v1/health
+  // first; only spawn (detached, so it outlives this command and the tmux
+  // session) if nothing answers.
+  const daemonState = await ensureDaemonRunning();
   if (daemonState === 'started') {
-    console.log('Started claude-pager daemon in the background.');
+    console.log('✓ Started claude-pager daemon in the background.');
+  } else if (daemonState === 'unhealthy') {
+    console.warn('⚠ claude-pager daemon was spawned but is not responding — notifications will not work.');
+    console.warn('  Last lines of ~/.claude-pager/daemon-stdout.log:\n' + tailDaemonLog());
   } else if (daemonState === 'spawn-failed') {
-    console.warn('Warning: could not auto-start the claude-pager daemon — run `claude-pager start` manually.');
+    console.warn('⚠ Could not auto-start the claude-pager daemon — run `claude-pager start` manually.');
   }
 
   // Generate a session name from cwd

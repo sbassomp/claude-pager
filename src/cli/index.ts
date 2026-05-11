@@ -142,8 +142,9 @@ program
 const runIdx = process.argv.indexOf('run');
 if (runIdx !== -1 && runIdx === 2) {
   // Everything after "run" goes to claude
-  run(process.argv.slice(runIdx + 1));
-  process.exit(0);
+  run(process.argv.slice(runIdx + 1))
+    .then(() => process.exit(0))
+    .catch(err => { console.error(err); process.exit(1); });
+} else {
+  program.parse();
 }
-
-program.parse();
