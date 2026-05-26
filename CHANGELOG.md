@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.20 (2026-05-11)
+
+### Features
+
+- **Live terminal view from the dashboard (opt-in)** — a 📟 button on each session card opens a modal that mirrors the session's tmux pane (full scrollback, ANSI colors via xterm.js) and lets you type a line and send it straight to the session. Backend:
+  - `GET /api/v1/session/:id/terminal` → `tmux capture-pane -p -e -S -3000` (scrollback + colors)
+  - `POST /api/v1/session/:id/keys` → `tmux send-keys -l -- <text>` (+ Enter)
+  - The modal polls every 2 s (snapshot rendering, not a live PTY stream).
+- **Gated behind `dashboard.allowTerminal` (off by default)** — this is close to full shell access and `capture-pane` can expose secrets visible in the terminal, so both endpoints return 404 unless `dashboard.allowTerminal: true` is set, and the 📟 button only appears when enabled. When the dashboard is bound beyond loopback, the existing Basic Auth still applies. Pane ids are validated against `^%\\d+$` and keystrokes are sent literally (`-l`) to prevent tmux option/key injection.
+
 ## 0.3.19 (2026-05-11)
 
 ### Fixes

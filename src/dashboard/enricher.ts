@@ -66,6 +66,7 @@ export interface DashboardProject {
 export interface DashboardResponse {
   projects: DashboardProject[];
   updatedAt: number;
+  terminalEnabled: boolean;
 }
 
 export async function getDashboardData(): Promise<DashboardResponse> {
@@ -227,5 +228,5 @@ export async function getDashboardData(): Promise<DashboardResponse> {
       return aMin !== bMin ? aMin - bMin : a.name.localeCompare(b.name);
     });
 
-  return { projects, updatedAt: Date.now() };
+  return { projects, updatedAt: Date.now(), terminalEnabled: config.dashboard?.allowTerminal === true };
 }

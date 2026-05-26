@@ -126,4 +126,56 @@ describe('HTTP server', () => {
       assert.ok(res.statusCode !== 404, 'Should have found a matching pending question');
     });
   });
+
+  describe('terminal endpoints gating', () => {
+    it('returns 404 for capture when allowTerminal is off (default)', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/v1/session/sess-1/terminal' });
+      assert.equal(res.statusCode, 404);
+      assert.match(JSON.parse(res.payload).error, /disabled/);
+    });
+
+    it('returns 404 for keys when allowTerminal is off (default)', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/session/sess-1/keys',
+        payload: { keys: 'ls', enter: true },
+      });
+      assert.equal(res.statusCode, 404);
+      assert.match(JSON.parse(res.payload).error, /disabled/);
+    });
+  });
+});
+
+describe('HTTP server with allowTerminal enabled', () => {
+  let app: FastifyInstance;
+
+  before(async () => {
+    app = await createServer({
+      config: { ...TEST_CONFIG, dashboard: { allowTerminal: true } },
+      channel: mockChannel(),
+      injector: mockInjector(),
+    });
+  });
+
+  after(async () => { await app.close(); });
+
+  it('capture: rejects invalid session id', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/v1/session/bad%20id/terminal' });
+    assert.equal(res.statusCode, 400);
+  });
+
+  it('capture: 404 when the session is unknown (not "disabled")', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/v1/session/no-such-session/terminal' });
+    assert.equal(res.statusCode, 404);
+    assert.match(JSON.parse(res.payload).error, /not found|no tmux/);
+  });
+
+  it('keys: validates body (missing keys → 400)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/session/sess-1/keys',
+      payload: { enter: true },
+    });
+    assert.equal(res.statusCode, 400);
+  });
 });

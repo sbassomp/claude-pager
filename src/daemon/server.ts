@@ -10,6 +10,7 @@ import type { Note } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { logDaemon } from '../utils/log.js';
 import { registerAuth } from './auth.js';
+import { capturePane, sendKeys } from './terminal.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
 import { broadcastSSE } from '../dashboard/sse.js';
@@ -264,6 +265,62 @@ export async function createServer(deps: DaemonDeps) {
     cleanDeadSessions();
     return { sessions: listSessions() };
   });
+
+  // --- Terminal (opt-in via config.dashboard.allowTerminal) ---
+
+  const terminalEnabled = config.dashboard?.allowTerminal === true;
+
+  // Capture a session's tmux pane content (with scrollback + ANSI colors).
+  app.get<{ Params: { id: string } }>('/api/v1/session/:id/terminal', async (request, reply) => {
+    if (!terminalEnabled) return reply.status(404).send({ error: 'Terminal view is disabled' });
+    const { id } = request.params;
+    if (!isValidSessionId(id)) return reply.status(400).send({ error: 'Invalid session id' });
+    const session = getSession(id);
+    if (!session || !session.tmuxPane) {
+      return reply.status(404).send({ error: 'Session not found or has no tmux pane' });
+    }
+    try {
+      const content = await capturePane(session.tmuxPane);
+      return { content, tmuxPane: session.tmuxPane };
+    } catch (err) {
+      logDaemon('terminal-capture-failed', id, String((err as Error).message).slice(0, 60));
+      return reply.status(500).send({ error: 'Failed to capture pane' });
+    }
+  });
+
+  // Send keystrokes (literal text, optionally + Enter) to a session's pane.
+  app.post<{ Params: { id: string }; Body: { keys: string; enter?: boolean } }>(
+    '/api/v1/session/:id/keys',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['keys'],
+          properties: {
+            keys: { type: 'string', maxLength: 10000 },
+            enter: { type: 'boolean' },
+          },
+        } as const,
+      },
+    },
+    async (request, reply) => {
+      if (!terminalEnabled) return reply.status(404).send({ error: 'Terminal view is disabled' });
+      const { id } = request.params;
+      if (!isValidSessionId(id)) return reply.status(400).send({ error: 'Invalid session id' });
+      const session = getSession(id);
+      if (!session || !session.tmuxPane) {
+        return reply.status(404).send({ error: 'Session not found or has no tmux pane' });
+      }
+      try {
+        await sendKeys(session.tmuxPane, request.body.keys, request.body.enter !== false);
+        logDaemon('terminal-keys', id, session.tmuxPane);
+        return { ok: true };
+      } catch (err) {
+        logDaemon('terminal-keys-failed', id, String((err as Error).message).slice(0, 60));
+        return reply.status(500).send({ error: 'Failed to send keys' });
+      }
+    },
+  );
 
   // --- Notes ---
 

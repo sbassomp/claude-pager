@@ -6,6 +6,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
   <title>claude-pager dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -524,6 +526,74 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       box-shadow: 0 0 40px rgba(0,0,0,0.5);
     }
 
+    .term-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .term-modal {
+      width: min(1100px, 94vw);
+      height: min(760px, 90vh);
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 0 40px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+
+    .term-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid #21262d;
+      font-size: 13px;
+      color: #c9d1d9;
+    }
+
+    .term-head .term-title { font-weight: 600; color: #f0f6fc; }
+    .term-head .term-pane { color: #8b949e; }
+    .term-head .term-close {
+      margin-left: auto;
+      background: none; border: none; color: #8b949e;
+      font-size: 18px; cursor: pointer; padding: 0 4px;
+    }
+    .term-head .term-close:hover { color: #f85149; }
+
+    .term-body { flex: 1; min-height: 0; padding: 8px; }
+    .term-body .xterm { height: 100%; }
+
+    .term-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 10px 14px;
+      border-top: 1px solid #21262d;
+    }
+    .term-input-row input {
+      flex: 1;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 6px 10px;
+    }
+    .term-input-row input:focus { outline: none; border-color: #58a6ff; }
+
+    .term-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 13px; opacity: 0.35; transition: opacity 0.2s; padding: 2px 4px;
+    }
+    .term-btn:hover { opacity: 0.9; }
+
     .note-grip {
       cursor: grab;
       color: #484f58;
@@ -861,6 +931,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
           <div class="card-header">
             <span class="card-title" id="\${titleId}">\${escapeHtml(s.title)}</span>
             <span class="badge \${s.state}">\${stateLabel(s.state)}</span>
+            \${(data && data.terminalEnabled && s.tmuxPane)
+              ? '<button class="term-btn" onclick="openTerminal(\\'' + s.sessionId + '\\',\\'' + escapeHtml(s.tmuxPane) + '\\')" title="Open terminal">📟</button>'
+              : ''}
             <button class="dismiss-btn" onclick="dismissSession('\${s.sessionId}')" title="Dismiss session">🗑</button>
           </div>
           \${expandBtn}
@@ -1326,6 +1399,97 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         await respondTo(q.eventId, 'allow', null);
       }
       fetchDashboard();
+    }
+
+    // --- Terminal view ---
+    let termState = null; // { overlay, term, sessionId, pollTimer }
+
+    async function openTerminal(sessionId, pane) {
+      if (termState) closeTerminal();
+
+      const overlay = document.createElement('div');
+      overlay.className = 'term-overlay';
+      overlay.innerHTML =
+        '<div class="term-modal">'
+        + '<div class="term-head">'
+        + '<span class="term-title">Terminal</span>'
+        + '<span class="term-pane">pane ' + pane + '</span>'
+        + '<button class="term-close" title="Close">✕</button>'
+        + '</div>'
+        + '<div class="term-body"><div class="term-xterm"></div></div>'
+        + '<div class="term-input-row">'
+        + '<input type="text" class="term-send" placeholder="Type and press Enter to send to the session...">'
+        + '</div>'
+        + '</div>';
+      document.body.appendChild(overlay);
+
+      const term = new Terminal({
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: 12,
+        convertEol: true,
+        disableStdin: true,
+        theme: { background: '#0d1117', foreground: '#c9d1d9' },
+        scrollback: 5000,
+      });
+      term.open(overlay.querySelector('.term-xterm'));
+
+      termState = { overlay, term, sessionId, pollTimer: null };
+
+      // Close on ✕, on click outside the modal, or Escape.
+      overlay.querySelector('.term-close').onclick = closeTerminal;
+      overlay.onclick = (e) => { if (e.target === overlay) closeTerminal(); };
+      document.addEventListener('keydown', onTermEsc);
+
+      const sendInput = overlay.querySelector('.term-send');
+      sendInput.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+          sendTerminalKeys(sessionId, sendInput.value);
+          sendInput.value = '';
+        }
+      };
+      sendInput.focus();
+
+      await refreshTerminal();
+      termState.pollTimer = setInterval(refreshTerminal, 2000);
+    }
+
+    function onTermEsc(e) { if (e.key === 'Escape') closeTerminal(); }
+
+    function closeTerminal() {
+      if (!termState) return;
+      clearInterval(termState.pollTimer);
+      document.removeEventListener('keydown', onTermEsc);
+      termState.term.dispose();
+      termState.overlay.remove();
+      termState = null;
+    }
+
+    async function refreshTerminal() {
+      if (!termState) return;
+      try {
+        const res = await fetch('/api/v1/session/' + termState.sessionId + '/terminal');
+        if (!res.ok) return;
+        const data = await res.json();
+        // Snapshot rendering: reset then write the captured buffer (with ANSI).
+        termState.term.reset();
+        termState.term.write(data.content || '');
+      } catch (e) {
+        console.error('terminal refresh error:', e);
+      }
+    }
+
+    async function sendTerminalKeys(sessionId, keys) {
+      if (!keys) return;
+      try {
+        await fetch('/api/v1/session/' + sessionId + '/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keys, enter: true }),
+        });
+        setTimeout(refreshTerminal, 150);
+      } catch (e) {
+        console.error('terminal send error:', e);
+      }
     }
 
     async function fetchDashboard() {

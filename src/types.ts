@@ -23,6 +23,10 @@ export interface DashboardConfig {
   // Skip the auth-required check when binding to a non-loopback address.
   // Use only behind a trusted reverse proxy that handles auth itself.
   allowInsecure?: boolean;
+  // Enables the live terminal view: capture a session's tmux pane and send
+  // keystrokes to it from the dashboard. Off by default — this is close to
+  // full shell access and can expose secrets visible in the terminal.
+  allowTerminal?: boolean;
 }
 
 export interface ChannelConfig {
