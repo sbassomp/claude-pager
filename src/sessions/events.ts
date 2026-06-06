@@ -37,13 +37,24 @@ export function isResolved(eventId: string): boolean {
 }
 
 
-const PENDING_TTL_MS = 30 * 60 * 1000; // 30 minutes
+// Default 12 hours so overnight prompts survive until morning. Configurable
+// via RelayConfig.pendingTtlSeconds — the daemon calls setPendingTtlMs() at
+// startup with the configured value.
+let pendingTtlMs = 12 * 60 * 60 * 1000;
+
+export function setPendingTtlMs(ms: number): void {
+  if (ms > 0) pendingTtlMs = ms;
+}
+
+export function getPendingTtlMs(): number {
+  return pendingTtlMs;
+}
 
 export function listPending(): PendingQuestion[] {
   // Expire old questions
   const now = Date.now();
   for (const [id, q] of pending) {
-    if (now - q.notifiedAt > PENDING_TTL_MS) {
+    if (now - q.notifiedAt > pendingTtlMs) {
       pending.delete(id);
     }
   }

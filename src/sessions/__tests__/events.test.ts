@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPending, getPending, removePending, listPending, resolveResponse } from '../events.js';
+import { addPending, getPending, removePending, listPending, resolveResponse, setPendingTtlMs, getPendingTtlMs } from '../events.js';
 import type { RelayEvent } from '../../types.js';
 
 function makeEvent(id: string, overrides?: Partial<RelayEvent>): RelayEvent {
@@ -111,6 +111,33 @@ describe('event store', () => {
       const result = resolveResponse('do the thing');
       assert.ok(result);
       assert.equal(result.question.event.id, 'evt-2');
+    });
+  });
+
+  describe('pending TTL configuration', () => {
+    it('defaults to 12 hours', () => {
+      // Default is 12h, but a previous test may have overridden it. Reset
+      // and assert the documented default.
+      setPendingTtlMs(12 * 60 * 60 * 1000);
+      assert.equal(getPendingTtlMs(), 12 * 60 * 60 * 1000);
+    });
+
+    it('expires pending entries after the configured TTL', async () => {
+      setPendingTtlMs(50);
+      addPending(makeEvent('evt-ttl'));
+      assert.equal(listPending().length, 1);
+      await new Promise(r => setTimeout(r, 120));
+      assert.equal(listPending().length, 0, 'entry should have expired');
+      // Restore default so it does not leak to other tests.
+      setPendingTtlMs(12 * 60 * 60 * 1000);
+    });
+
+    it('ignores non-positive values', () => {
+      setPendingTtlMs(5000);
+      setPendingTtlMs(0);
+      setPendingTtlMs(-1);
+      assert.equal(getPendingTtlMs(), 5000, 'invalid values should not clobber the current TTL');
+      setPendingTtlMs(12 * 60 * 60 * 1000);
     });
   });
 });

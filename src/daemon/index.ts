@@ -8,6 +8,7 @@ import { createServer } from './server.js';
 import { createChannelHandlers } from './handlers.js';
 import { closeAllSSEClients } from '../dashboard/sse.js';
 import { assertDashboardConfig } from './auth.js';
+import { setPendingTtlMs } from '../sessions/events.js';
 
 const SHUTDOWN_TIMEOUT_MS = 3000;
 
@@ -84,6 +85,7 @@ export async function startDaemon(): Promise<void> {
   ensureDataDir();
   const config = loadConfig();
   assertDashboardConfig(config.dashboard);
+  if (config.pendingTtlSeconds) setPendingTtlMs(config.pendingTtlSeconds * 1000);
   const channel = createChannel(config.channel);
   const injector = createInjector(config.injector);
 

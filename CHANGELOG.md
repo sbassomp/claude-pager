@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.21 (2026-05-26)
+
+### Features
+
+- **Pending event TTL bumped to 12 h and made configurable** — pending permission/idle prompts used to expire after 30 minutes, so anything fired overnight was gone by morning. Default TTL is now **12 hours**, and the new `pendingTtlSeconds` config option lets you tune it (e.g. `86400` for 24 h, or `3600` for a stricter 1 h window). Applied at daemon startup via `setPendingTtlMs(config.pendingTtlSeconds * 1000)`; in-memory store accepts only positive values.
+
 ## 0.3.20 (2026-05-11)
 
 ### Features

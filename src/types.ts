@@ -11,6 +11,10 @@ export interface RelayConfig {
   dataDir: string;
   ci?: CIConfig;
   dashboard?: DashboardConfig;
+  // How long pending events stay actionable before they're expired and dropped
+  // from the dashboard / channels. Default is 12 hours (43200). Bump it higher
+  // if you want overnight prompts to survive, lower it for shorter windows.
+  pendingTtlSeconds?: number;
 }
 
 export interface DashboardConfig {
