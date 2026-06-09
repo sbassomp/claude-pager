@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.22 (2026-06-09)
+
+### Security UX
+
+- **`AskUserQuestion` no longer pretends to be answerable from the dashboard** — Claude Code's interactive multi-question picker was surfaced as a regular `permission_prompt` with a raw JSON `tool_input` and the standard Allow/Deny buttons. Clicking "Allow" looked like an answer, but only authorized the tool to open its TUI in the terminal; the user could not actually pick an option from the dashboard, and the JSON dump was unreadable. Now:
+  - the parsed questions/options are rendered in a clean structured block,
+  - a warning ribbon explains that Allow only opens the picker,
+  - the action button becomes **📟 Répondre dans le terminal** — it Allows the tool, then automatically opens the terminal modal so the user can navigate the picker,
+  - Deny stays as a way to reject the whole tool call.
+
+### Features
+
+- **Terminal modal: special-key buttons** — added a row of buttons (`↑ ↓ ← → ⏎ Esc Tab ⌫ ^C`) above the input field so TUI menus (the new `AskUserQuestion` picker, vim, less, …) can be navigated from the browser. Each button posts to a new `key` shape on `POST /api/v1/session/:id/keys` (alternative to the existing `keys` literal text). The key name is checked against a whitelist on the server so the dashboard cannot send arbitrary tmux key bindings.
+
 ## 0.3.21 (2026-05-26)
 
 ### Features

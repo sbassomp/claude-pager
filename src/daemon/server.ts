@@ -10,7 +10,7 @@ import type { Note } from '../notes/store.js';
 import { isValidEventType, isValidSessionId } from '../utils/validation.js';
 import { logDaemon } from '../utils/log.js';
 import { registerAuth } from './auth.js';
-import { capturePane, sendKeys } from './terminal.js';
+import { capturePane, sendKeys, sendSpecialKey, isAllowedSpecialKey } from './terminal.js';
 import { randomUUID } from 'node:crypto';
 import { registerDashboardRoutes } from '../dashboard/routes.js';
 import { broadcastSSE } from '../dashboard/sse.js';
@@ -288,17 +288,22 @@ export async function createServer(deps: DaemonDeps) {
     }
   });
 
-  // Send keystrokes (literal text, optionally + Enter) to a session's pane.
-  app.post<{ Params: { id: string }; Body: { keys: string; enter?: boolean } }>(
+  // Send keystrokes to a session's pane. Two modes:
+  // - `keys` (string): sent literally via tmux send-keys -l, optionally + Enter
+  // - `key` (string): a single tmux key name from a whitelist (Up/Down/Enter/
+  //   Escape/Tab/etc.) sent without -l so tmux interprets the name. Use this
+  //   for TUI navigation (Claude Code's AskUserQuestion picker, vim, etc.).
+  // Exactly one of the two must be provided.
+  app.post<{ Params: { id: string }; Body: { keys?: string; enter?: boolean; key?: string } }>(
     '/api/v1/session/:id/keys',
     {
       schema: {
         body: {
           type: 'object',
-          required: ['keys'],
           properties: {
             keys: { type: 'string', maxLength: 10000 },
             enter: { type: 'boolean' },
+            key: { type: 'string', maxLength: 16 },
           },
         } as const,
       },
@@ -307,13 +312,30 @@ export async function createServer(deps: DaemonDeps) {
       if (!terminalEnabled) return reply.status(404).send({ error: 'Terminal view is disabled' });
       const { id } = request.params;
       if (!isValidSessionId(id)) return reply.status(400).send({ error: 'Invalid session id' });
+
+      const { keys, enter, key } = request.body;
+      const hasLiteral = typeof keys === 'string';
+      const hasKey = typeof key === 'string' && key.length > 0;
+      if (hasLiteral === hasKey) {
+        return reply.status(400).send({ error: 'Provide exactly one of `keys` or `key`' });
+      }
+      if (hasKey && !isAllowedSpecialKey(key as string)) {
+        return reply.status(400).send({ error: 'Key not allowed' });
+      }
+
       const session = getSession(id);
       if (!session || !session.tmuxPane) {
         return reply.status(404).send({ error: 'Session not found or has no tmux pane' });
       }
+
       try {
-        await sendKeys(session.tmuxPane, request.body.keys, request.body.enter !== false);
-        logDaemon('terminal-keys', id, session.tmuxPane);
+        if (hasKey) {
+          await sendSpecialKey(session.tmuxPane, key as string);
+          logDaemon('terminal-key', id, session.tmuxPane, key as string);
+        } else {
+          await sendKeys(session.tmuxPane, keys as string, enter !== false);
+          logDaemon('terminal-keys', id, session.tmuxPane);
+        }
         return { ok: true };
       } catch (err) {
         logDaemon('terminal-keys-failed', id, String((err as Error).message).slice(0, 60));

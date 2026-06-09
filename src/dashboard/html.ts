@@ -307,6 +307,25 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       float: right;
     }
 
+    .aq-warning {
+      background: #2a1810;
+      border: 1px solid #5a2a02;
+      border-radius: 4px;
+      color: #f0883e;
+      font-size: 11px;
+      padding: 6px 8px;
+      margin: 6px 0 8px;
+    }
+
+    .aq-list { font-size: 12px; color: #c9d1d9; max-height: 260px; overflow-y: auto; }
+    .aq-question { margin: 6px 0; padding: 6px 8px; background: #0d1117; border-radius: 4px; }
+    .aq-header { color: #58a6ff; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+    .aq-q { color: #f0f6fc; font-weight: 600; margin-bottom: 4px; }
+    .aq-options { list-style: none; padding: 0; margin: 0; }
+    .aq-options li { padding: 2px 0; }
+    .aq-opt-label { color: #c9d1d9; font-weight: 600; }
+    .aq-opt-desc { color: #8b949e; }
+
     .action-row {
       display: flex;
       gap: 8px;
@@ -569,6 +588,30 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
     .term-body { flex: 1; min-height: 0; padding: 8px; }
     .term-body .xterm { height: 100%; }
+
+    .term-keys-row {
+      display: flex;
+      gap: 6px;
+      padding: 8px 14px;
+      border-top: 1px solid #21262d;
+      flex-wrap: wrap;
+    }
+
+    .term-key-btn {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 3px 8px;
+      cursor: pointer;
+      min-width: 28px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .term-key-btn:hover { background: #21262d; border-color: #58a6ff; }
+    .term-key-btn:active { background: #0d419d; }
 
     .term-input-row {
       display: flex;
@@ -848,6 +891,55 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       return '<pre style="font-size:10px;color:#8b949e;word-break:break-all;white-space:pre-wrap;margin:4px 0;max-height:200px;overflow-y:auto">' + escapeHtml(input.slice(0, 3000)) + '</pre>';
     }
 
+    function parseAskUserQuestion(toolInput) {
+      try {
+        const obj = typeof toolInput === 'string' ? JSON.parse(toolInput) : toolInput;
+        if (!obj || !Array.isArray(obj.questions)) return null;
+        return obj.questions.map(q => ({
+          header: q.header || '',
+          question: q.question || '',
+          options: Array.isArray(q.options)
+            ? q.options.map(o => ({ label: o.label || '', description: o.description || '' }))
+            : [],
+        }));
+      } catch { return null; }
+    }
+
+    function renderAskUser(questions) {
+      return '<div class="aq-list">' + questions.map((q, i) => {
+        const head = q.header ? '<div class="aq-header">' + escapeHtml(q.header) + '</div>' : '';
+        const opts = q.options.map((o, j) =>
+          '<li><span class="aq-opt-label">' + escapeHtml(o.label) + '</span>'
+          + (o.description ? '<span class="aq-opt-desc"> — ' + escapeHtml(o.description.slice(0, 200)) + (o.description.length > 200 ? '…' : '') + '</span>' : '')
+          + '</li>'
+        ).join('');
+        return '<div class="aq-question">'
+          + head
+          + '<div class="aq-q">' + escapeHtml(q.question) + '</div>'
+          + (opts ? '<ul class="aq-options">' + opts + '</ul>' : '')
+          + '</div>';
+      }).join('') + '</div>';
+    }
+
+    async function openAskUserPicker(eventId, sessionId, pane, btn) {
+      if (btn) btn.disabled = true;
+      try {
+        // Allow the AskUserQuestion tool so Claude renders the picker in tmux.
+        const res = await fetch('/api/v1/respond-to', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId, response: 'allow' }),
+        });
+        if (!res.ok) { console.error('allow failed'); if (btn) btn.disabled = false; return; }
+        // Give the picker a moment to render, then open the terminal modal so
+        // the user can navigate with the arrow keys + Enter.
+        setTimeout(() => openTerminal(sessionId, pane), 400);
+      } catch (e) {
+        console.error('openAskUserPicker error:', e);
+      }
+      if (btn) btn.disabled = false;
+    }
+
     function stateLabel(state) {
       const labels = {
         working: 'Working',
@@ -873,28 +965,52 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         const contextInfo = q.context
           ? '<div style="font-size:11px;color:#c9d1d9;margin-bottom:6px;white-space:pre-wrap">' + escapeHtml(q.context.slice(-300)) + '</div>'
           : '';
-        const toolInfo = q.toolName
-          ? contextInfo + '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
-            (q.toolInput ? '<br>' + formatToolInput(q.toolInput) : '')
-          : '<div class="prompt-msg" style="font-size:12px;color:#c9d1d9;white-space:pre-wrap;max-height:240px;overflow-y:auto">' + escapeHtml(q.message) + '</div>';
 
-        const actions = isPermission
-          ? \`<div class="action-row">
-              <button class="action-btn allow" onclick="respondTo('\${q.eventId}', 'allow', this)">✓ Allow</button>
-              <button class="action-btn deny" onclick="respondTo('\${q.eventId}', 'deny', this)">✗ Deny</button>
-            </div>\`
-          : \`<div class="action-row" style="align-items:center">
-              <input type="text" class="reply-input" id="reply-\${q.eventId}" placeholder="Type a reply..." onkeydown="if(event.key==='Enter')respondTo('\${q.eventId}',this.value,this)">
-              <button class="action-btn allow" onclick="respondTo('\${q.eventId}',document.getElementById('reply-\${q.eventId}').value,this)">Send</button>
-            </div>\`;
+        // Special-case AskUserQuestion: this Claude Code tool opens an
+        // interactive multi-question picker in the terminal. Allow only
+        // *opens* the picker (does NOT pick an option) — clicking what looks
+        // like an answer button would mislead the user. Render the questions
+        // for context and route the user to the terminal modal to navigate.
+        const askUser = (q.toolName === 'AskUserQuestion' && q.toolInput)
+          ? parseAskUserQuestion(q.toolInput) : null;
 
-        pending = \`
-          <div class="pending-box">
-            <span class="ago">\${timeAgo(Date.now() - q.agoSeconds * 1000)}</span>
-            \${toolInfo}
-            \${actions}
-          </div>
-        \`;
+        if (askUser && s.tmuxPane) {
+          pending = \`
+            <div class="pending-box">
+              <span class="ago">\${timeAgo(Date.now() - q.agoSeconds * 1000)}</span>
+              \${contextInfo}
+              <div class="aq-warning">⚠ Question interactive — Allow ouvre le picker mais ne répond pas. Utilise le terminal pour naviguer.</div>
+              \${renderAskUser(askUser)}
+              <div class="action-row">
+                <button class="action-btn allow" onclick="openAskUserPicker('\${q.eventId}','\${s.sessionId}','\${s.tmuxPane}', this)">📟 Répondre dans le terminal</button>
+                <button class="action-btn deny" onclick="respondTo('\${q.eventId}', 'deny', this)">✗ Deny</button>
+              </div>
+            </div>
+          \`;
+        } else {
+          const toolInfo = q.toolName
+            ? contextInfo + '<span class="tool">' + escapeHtml(q.toolName) + '</span>' +
+              (q.toolInput ? '<br>' + formatToolInput(q.toolInput) : '')
+            : '<div class="prompt-msg" style="font-size:12px;color:#c9d1d9;white-space:pre-wrap;max-height:240px;overflow-y:auto">' + escapeHtml(q.message) + '</div>';
+
+          const actions = isPermission
+            ? \`<div class="action-row">
+                <button class="action-btn allow" onclick="respondTo('\${q.eventId}', 'allow', this)">✓ Allow</button>
+                <button class="action-btn deny" onclick="respondTo('\${q.eventId}', 'deny', this)">✗ Deny</button>
+              </div>\`
+            : \`<div class="action-row" style="align-items:center">
+                <input type="text" class="reply-input" id="reply-\${q.eventId}" placeholder="Type a reply..." onkeydown="if(event.key==='Enter')respondTo('\${q.eventId}',this.value,this)">
+                <button class="action-btn allow" onclick="respondTo('\${q.eventId}',document.getElementById('reply-\${q.eventId}').value,this)">Send</button>
+              </div>\`;
+
+          pending = \`
+            <div class="pending-box">
+              <span class="ago">\${timeAgo(Date.now() - q.agoSeconds * 1000)}</span>
+              \${toolInfo}
+              \${actions}
+            </div>
+          \`;
+        }
       }
 
       const hasGit = s.git.branch !== 'unknown';
@@ -1409,6 +1525,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
       const overlay = document.createElement('div');
       overlay.className = 'term-overlay';
+      const keyBtn = (label, k) =>
+        '<button class="term-key-btn" data-key="' + k + '" title="Send ' + k + '">' + label + '</button>';
       overlay.innerHTML =
         '<div class="term-modal">'
         + '<div class="term-head">'
@@ -1417,6 +1535,11 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         + '<button class="term-close" title="Close">✕</button>'
         + '</div>'
         + '<div class="term-body"><div class="term-xterm"></div></div>'
+        + '<div class="term-keys-row">'
+        + keyBtn('↑', 'Up') + keyBtn('↓', 'Down') + keyBtn('←', 'Left') + keyBtn('→', 'Right')
+        + keyBtn('⏎', 'Enter') + keyBtn('Esc', 'Escape') + keyBtn('Tab', 'Tab')
+        + keyBtn('⌫', 'BSpace') + keyBtn('^C', 'C-c')
+        + '</div>'
         + '<div class="term-input-row">'
         + '<input type="text" class="term-send" placeholder="Type and press Enter to send to the session...">'
         + '</div>'
@@ -1448,6 +1571,14 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         }
       };
       sendInput.focus();
+
+      overlay.querySelectorAll('.term-key-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          e.preventDefault();
+          sendTerminalSpecialKey(sessionId, btn.dataset.key);
+          sendInput.focus();
+        };
+      });
 
       await refreshTerminal();
       termState.pollTimer = setInterval(refreshTerminal, 2000);
@@ -1489,6 +1620,19 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         setTimeout(refreshTerminal, 150);
       } catch (e) {
         console.error('terminal send error:', e);
+      }
+    }
+
+    async function sendTerminalSpecialKey(sessionId, key) {
+      try {
+        await fetch('/api/v1/session/' + sessionId + '/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key }),
+        });
+        setTimeout(refreshTerminal, 150);
+      } catch (e) {
+        console.error('terminal special-key error:', e);
       }
     }
 

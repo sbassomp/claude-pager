@@ -36,3 +36,24 @@ export async function sendKeys(pane: string, keys: string, enter: boolean): Prom
     await execFileP('tmux', ['send-keys', '-t', pane, 'Enter'], { timeout: 2000 });
   }
 }
+
+// Whitelist of tmux key names the terminal modal can send. Anything else is
+// rejected — we don't want the dashboard becoming an arbitrary key-name
+// injection surface (e.g. binding-firing keys, command-mode triggers).
+const SPECIAL_KEYS: ReadonlySet<string> = new Set([
+  'Up', 'Down', 'Left', 'Right',
+  'Enter', 'Escape', 'Tab', 'BSpace',
+  'PageUp', 'PageDown', 'Home', 'End',
+  'C-c', 'C-d', 'C-l',
+]);
+
+export function isAllowedSpecialKey(key: string): boolean {
+  return SPECIAL_KEYS.has(key);
+}
+
+// Send a single tmux key by name (no -l flag, so tmux interprets the name).
+export async function sendSpecialKey(pane: string, key: string): Promise<void> {
+  if (!isValidPane(pane)) throw new Error('invalid pane');
+  if (!isAllowedSpecialKey(key)) throw new Error('key not allowed');
+  await execFileP('tmux', ['send-keys', '-t', pane, key], { timeout: 2000 });
+}

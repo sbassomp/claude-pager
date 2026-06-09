@@ -170,12 +170,41 @@ describe('HTTP server with allowTerminal enabled', () => {
     assert.match(JSON.parse(res.payload).error, /not found|no tmux/);
   });
 
-  it('keys: validates body (missing keys → 400)', async () => {
+  it('keys: rejects body with neither keys nor key (400)', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/v1/session/sess-1/keys',
       payload: { enter: true },
     });
     assert.equal(res.statusCode, 400);
+    assert.match(JSON.parse(res.payload).error, /exactly one/);
+  });
+
+  it('keys: rejects body with both keys and key (400)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/session/sess-1/keys',
+      payload: { keys: 'ls', key: 'Down' },
+    });
+    assert.equal(res.statusCode, 400);
+  });
+
+  it('keys: rejects unknown special key (400)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/session/sess-1/keys',
+      payload: { key: 'C-z' },
+    });
+    assert.equal(res.statusCode, 400);
+    assert.match(JSON.parse(res.payload).error, /not allowed/);
+  });
+
+  it('keys: accepts whitelisted special key shape (then 404 because no real session)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/session/sess-1/keys',
+      payload: { key: 'Down' },
+    });
+    assert.equal(res.statusCode, 404);
   });
 });
