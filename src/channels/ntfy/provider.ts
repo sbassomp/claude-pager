@@ -1,5 +1,6 @@
 import type { ChannelProvider, ChannelListeners, NotificationResult } from '../channel.js';
 import type { NtfyConfig, RelayEvent } from '../../types.js';
+import { isAskUserQuestion, parseAskUserQuestion, formatAskUserQuestionText } from '../../utils/ask-user-question.js';
 
 export class NtfyProvider implements ChannelProvider {
   readonly name = 'ntfy';
@@ -66,15 +67,23 @@ export class NtfyProvider implements ChannelProvider {
       ...this.authHeaders(),
     };
 
+    const askUser = isAskUserQuestion(event.toolName) ? parseAskUserQuestion(event.toolInput) : null;
+
     let body = `#${shortId} ${event.message}`;
-    if (event.toolName) {
+    if (askUser) {
+      // Replace the raw JSON dump with the structured rendering and warn that
+      // ntfy cannot drive the interactive picker — the user must go to the
+      // dashboard or the tmux pane to actually pick an option.
+      body = `#${shortId} ⚠ Interactive question — answer from the dashboard or the tmux pane (ntfy reply cannot drive the picker).\n\n`;
+      body += formatAskUserQuestionText(askUser);
+    } else if (event.toolName) {
       body += `\n${event.toolName}`;
       if (event.toolInput) {
         const input = event.toolInput.length > 200 ? event.toolInput.slice(0, 200) + '...' : event.toolInput;
         body += `(${input})`;
       }
     }
-    body += `\n\n${hint}`;
+    body += `\n\n${askUser ? 'Reply "deny" to reject the tool call.' : hint}`;
 
     try {
       const res = await fetch(this.topicUrl, {

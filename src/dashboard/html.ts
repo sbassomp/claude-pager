@@ -326,6 +326,12 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     .aq-opt-label { color: #c9d1d9; font-weight: 600; }
     .aq-opt-desc { color: #8b949e; }
 
+    .action-btn.aq-allow {
+      background: #0d419d;
+      color: #cbe2ff;
+    }
+    .action-btn.aq-allow:hover { background: #1158c7; }
+
     .action-row {
       display: flex;
       gap: 8px;
@@ -924,18 +930,28 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     async function openAskUserPicker(eventId, sessionId, pane, btn) {
       if (btn) btn.disabled = true;
       try {
+        showToast(btn, 'Allow envoyé…', false);
         // Allow the AskUserQuestion tool so Claude renders the picker in tmux.
+        // We tell the user *exactly* this happened so the action is never
+        // mistaken for picking an option.
         const res = await fetch('/api/v1/respond-to', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ eventId, response: 'allow' }),
         });
-        if (!res.ok) { console.error('allow failed'); if (btn) btn.disabled = false; return; }
+        if (!res.ok) {
+          let msg = 'Allow failed';
+          try { msg = (await res.json()).error || msg; } catch {}
+          showToast(btn, msg, true);
+          if (btn) btn.disabled = false;
+          return;
+        }
         // Give the picker a moment to render, then open the terminal modal so
         // the user can navigate with the arrow keys + Enter.
         setTimeout(() => openTerminal(sessionId, pane), 400);
       } catch (e) {
         console.error('openAskUserPicker error:', e);
+        showToast(btn, 'Allow error: ' + e, true);
       }
       if (btn) btn.disabled = false;
     }
@@ -982,7 +998,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
               <div class="aq-warning">⚠ Question interactive — Allow ouvre le picker mais ne répond pas. Utilise le terminal pour naviguer.</div>
               \${renderAskUser(askUser)}
               <div class="action-row">
-                <button class="action-btn allow" onclick="openAskUserPicker('\${q.eventId}','\${s.sessionId}','\${s.tmuxPane}', this)">📟 Répondre dans le terminal</button>
+                <button class="action-btn aq-allow" onclick="openAskUserPicker('\${q.eventId}','\${s.sessionId}','\${s.tmuxPane}', this)" title="Autorise le tool AskUserQuestion, puis ouvre la modal terminal pour naviguer le picker">📟 Allow + ouvrir le terminal</button>
                 <button class="action-btn deny" onclick="respondTo('\${q.eventId}', 'deny', this)">✗ Deny</button>
               </div>
             </div>

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.23 (2026-06-10)
+
+### Security UX (AskUserQuestion follow-up to 0.3.22)
+
+- **Dashboard — honest button + feedback** — 0.3.22 introduced a green "📟 Répondre dans le terminal" button that *looked* like a vanilla Allow and silently sent `allow` before opening the terminal modal, so a careless click resolved the permission without the user knowing what got answered. The button is now:
+  - relabelled **"📟 Allow + ouvrir le terminal"** so the dual action is explicit,
+  - painted in a distinct blue (`.aq-allow`, not the green allow class) to break the visual confusion with regular Allow,
+  - reports its work via toasts — `Allow envoyé…` immediately on click, then a clear error toast if the Allow call fails (instead of silently swallowing the failure).
+- **Telegram — parse + warn + drop the Allow button** — `AskUserQuestion` is now detected, the questions/options are rendered as a structured HTML block, an ⚠ warning explains the interactive nature, and the inline Allow button is *removed* (only Deny stays). Tapping Allow from a phone would open the picker in tmux with no way to navigate it — keeping it was a trap.
+- **ntfy — pretty-print + warning** — the raw JSON dump is replaced with the structured text rendering and a ⚠ line that ntfy cannot drive the picker (the user must answer from the dashboard or the tmux pane).
+
+### Refactor
+
+- **Shared `utils/ask-user-question.ts`** — `parseAskUserQuestion`, `isAskUserQuestion` and `formatAskUserQuestionText` are now in one helper used by the dashboard, Telegram, and ntfy. 6 new unit tests cover well-formed input, garbage rejection, the "drop entries with no question" rule, and description truncation.
+
 ## 0.3.22 (2026-06-09)
 
 ### Security UX

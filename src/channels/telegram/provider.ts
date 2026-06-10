@@ -3,6 +3,7 @@ import type { TelegramConfig, RelayEvent } from '../../types.js';
 import { escapeHtml, markdownToHtml } from '../../utils/html.js';
 import { handleVoiceMessage } from './voice-handler.js';
 import { addNote, listNotes } from '../../notes/store.js';
+import { isAskUserQuestion, parseAskUserQuestion, type AskUserQuestion } from '../../utils/ask-user-question.js';
 
 interface TelegramResponse {
   ok: boolean;
@@ -54,7 +55,14 @@ export class TelegramProvider implements ChannelProvider {
     // Build message text (HTML format)
     const icon = isPermission ? '🔒' : '💬';
     let text = `${icon} <b>#${shortId} ${escapeHtml(projectName)}</b>\n\n`;
-    if (event.toolName) {
+
+    const askUser = isAskUserQuestion(event.toolName) ? parseAskUserQuestion(event.toolInput) : null;
+
+    if (askUser) {
+      text += '⚠ <b>Question interactive</b> — Allow ouvre seulement le picker dans le terminal et ne répond pas. ';
+      text += 'Réponds depuis le dashboard (modal terminal) ou directement dans le tmux.\n\n';
+      text += renderAskUserHtml(askUser);
+    } else if (event.toolName) {
       text += `<code>${escapeHtml(event.toolName)}</code>`;
       if (event.toolInput) {
         const input = event.toolInput.length > 3000
@@ -66,17 +74,21 @@ export class TelegramProvider implements ChannelProvider {
       text += markdownToHtml(event.message);
     }
 
-    // Build inline keyboard
-    const keyboard = isPermission
-      ? {
-          inline_keyboard: [
-            [
-              { text: '✅ Allow', callback_data: `allow:${event.id}` },
-              { text: '❌ Deny', callback_data: `deny:${event.id}` },
-            ],
-          ],
-        }
-      : undefined;
+    // Build inline keyboard. For AskUserQuestion we drop the Allow button:
+    // tapping it from Telegram opens the picker in tmux but the user has no
+    // way to navigate the picker from their phone, so the button is a trap.
+    // Deny stays (rejecting the tool call is meaningful).
+    let keyboard: { inline_keyboard: Array<Array<{ text: string; callback_data: string }>> } | undefined;
+    if (isPermission && askUser) {
+      keyboard = { inline_keyboard: [[{ text: '❌ Deny', callback_data: `deny:${event.id}` }]] };
+    } else if (isPermission) {
+      keyboard = {
+        inline_keyboard: [[
+          { text: '✅ Allow', callback_data: `allow:${event.id}` },
+          { text: '❌ Deny', callback_data: `deny:${event.id}` },
+        ]],
+      };
+    }
 
     try {
       const res = await fetch(this.apiUrl('sendMessage'), {
@@ -381,4 +393,18 @@ export class TelegramProvider implements ChannelProvider {
     this.abortController?.abort();
     this.abortController = null;
   }
+}
+
+function renderAskUserHtml(questions: AskUserQuestion[]): string {
+  return questions.map((q, qi) => {
+    const head = q.header ? `<b>[${escapeHtml(q.header)}]</b>\n` : '';
+    const body = `Q${qi + 1}. ${escapeHtml(q.question)}`;
+    const opts = q.options.map((o, oi) => {
+      const desc = o.description
+        ? ` — <i>${escapeHtml(o.description.length > 140 ? o.description.slice(0, 140).trim() + '…' : o.description)}</i>`
+        : '';
+      return `  ${oi + 1}) <b>${escapeHtml(o.label)}</b>${desc}`;
+    }).join('\n');
+    return head + body + (opts ? '\n' + opts : '');
+  }).join('\n\n');
 }
