@@ -128,6 +128,19 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
     .dismiss-btn:hover { opacity: 0.8; color: #f85149; }
 
+    .sound-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      opacity: 0.7;
+      transition: opacity 0.2s, transform 0.1s;
+      padding: 2px 6px;
+    }
+    .sound-btn:hover { opacity: 1; }
+    .sound-btn:active { transform: scale(0.92); }
+    .sound-btn.muted { opacity: 0.35; }
+
     .ci-row {
       display: flex;
       gap: 12px;
@@ -801,6 +814,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     </div>
     <div class="meta">
       <button class="action-btn allow-all" id="allowAllBtn" style="display:none" onclick="allowAll()">Allow All</button>
+      <button class="sound-btn" id="soundBtn" onclick="toggleSound()" title="Toggle notification sound">🔔</button>
       <span class="status-dot connected" id="statusDot"></span>
       <span id="lastUpdate">connecting...</span>
     </div>
@@ -1193,6 +1207,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     }
 
     function render(data) {
+      detectNewPending(data);
       const container = document.getElementById('projects');
       if (!data.projects || data.projects.length === 0) {
         container.innerHTML = \`
@@ -1533,6 +1548,77 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       fetchDashboard();
     }
 
+    // --- Notification sound ---
+    // Tracks pending event ids we already showed; new ones trigger the ding.
+    // First render seeds the set without sounding so a page reload doesn't
+    // beep for prompts that were already pending.
+    let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+    let audioCtx = null;
+    let seenEventIds = new Set();
+    let firstSoundCheck = true;
+
+    function updateSoundBtn() {
+      const btn = document.getElementById('soundBtn');
+      if (!btn) return;
+      btn.textContent = soundEnabled ? '🔔' : '🔕';
+      btn.classList.toggle('muted', !soundEnabled);
+    }
+
+    function initAudio() {
+      if (audioCtx) return;
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+    }
+
+    function playNotificationSound() {
+      if (!soundEnabled) return;
+      initAudio();
+      if (!audioCtx) return;
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const t0 = audioCtx.currentTime;
+      // Two-note ding: E5 then C5, sine wave with a soft attack + decay so
+      // it doesn't pop. Quiet (peak 0.18) — meant to be noticed, not jarring.
+      [659.25, 523.25].forEach((freq, i) => {
+        const start = t0 + i * 0.13;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.22);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.25);
+      });
+    }
+
+    function toggleSound() {
+      initAudio();
+      soundEnabled = !soundEnabled;
+      localStorage.setItem('soundEnabled', String(soundEnabled));
+      updateSoundBtn();
+      if (soundEnabled) playNotificationSound(); // sample so the user hears what they enabled
+    }
+
+    function detectNewPending(data) {
+      const current = new Set();
+      if (data && Array.isArray(data.projects)) {
+        for (const p of data.projects) {
+          for (const s of (p.sessions || [])) {
+            if (s.pendingQuestion && s.pendingQuestion.eventId) current.add(s.pendingQuestion.eventId);
+          }
+        }
+      }
+      if (!firstSoundCheck) {
+        for (const id of current) {
+          if (!seenEventIds.has(id)) { playNotificationSound(); break; }
+        }
+      }
+      seenEventIds = current;
+      firstSoundCheck = false;
+    }
+
     // --- Terminal view ---
     let termState = null; // { overlay, term, sessionId, pollTimer }
 
@@ -1665,6 +1751,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       }
     }
 
+    updateSoundBtn();
     fetchDashboard();
 
     // SSE for instant push — polling as fallback

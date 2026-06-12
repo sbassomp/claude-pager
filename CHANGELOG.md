@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.24 (2026-06-12)
+
+### UX
+
+- **Audible ding on new pending events** — the dashboard now plays a short two-note tone (E5 → C5, sine, ~250 ms, peak gain 0.18) whenever a never-seen `pendingQuestion.eventId` appears in a refresh. Tracked client-side via a `Set` seeded on the first render so a page reload doesn't beep for prompts that were already waiting.
+- **🔔/🔕 toggle in the header** — clicking switches mute on or off; the choice persists in `localStorage` as `soundEnabled`. Enabling plays a sample ding so the user immediately hears what was activated. The first toggle click also initialises the `AudioContext`, which satisfies the browser autoplay policy without an extra "click to enable sound" gesture.
+- Sound is generated with the Web Audio API — no asset, no CDN, no privacy surface; works offline.
+
 ## 0.3.23 (2026-06-10)
 
 ### Security UX (AskUserQuestion follow-up to 0.3.22)
