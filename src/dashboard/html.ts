@@ -941,33 +941,16 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
       }).join('') + '</div>';
     }
 
-    async function openAskUserPicker(eventId, sessionId, pane, btn) {
-      if (btn) btn.disabled = true;
-      try {
-        showToast(btn, 'Allow envoyé…', false);
-        // Allow the AskUserQuestion tool so Claude renders the picker in tmux.
-        // We tell the user *exactly* this happened so the action is never
-        // mistaken for picking an option.
-        const res = await fetch('/api/v1/respond-to', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId, response: 'allow' }),
-        });
-        if (!res.ok) {
-          let msg = 'Allow failed';
-          try { msg = (await res.json()).error || msg; } catch {}
-          showToast(btn, msg, true);
-          if (btn) btn.disabled = false;
-          return;
-        }
-        // Give the picker a moment to render, then open the terminal modal so
-        // the user can navigate with the arrow keys + Enter.
-        setTimeout(() => openTerminal(sessionId, pane), 400);
-      } catch (e) {
-        console.error('openAskUserPicker error:', e);
-        showToast(btn, 'Allow error: ' + e, true);
-      }
-      if (btn) btn.disabled = false;
+    function openAskUserPicker(eventId, sessionId, pane) {
+      // AskUserQuestion renders its picker directly in the terminal: the options
+      // ARE the prompt, and option 1 of question 1 is pre-selected. Sending
+      // "allow" (which the injector turns into Enter) from here would instantly
+      // pick that default and skip to the next question — i.e. silently answer
+      // and "lose" the first question. So we send NOTHING: we just open the
+      // terminal modal over the already-live picker and let the user navigate it
+      // with the arrow keys + Enter. The pending card clears on its own once the
+      // transcript advances (see the auto-clear in the dashboard enricher).
+      openTerminal(sessionId, pane);
     }
 
     function stateLabel(state) {
@@ -1009,10 +992,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             <div class="pending-box">
               <span class="ago">\${timeAgo(Date.now() - q.agoSeconds * 1000)}</span>
               \${contextInfo}
-              <div class="aq-warning">⚠ Question interactive — Allow ouvre le picker mais ne répond pas. Utilise le terminal pour naviguer.</div>
+              <div class="aq-warning">⚠ Question interactive — le picker est déjà ouvert dans le terminal. Navigue avec ↑↓ + Entrée ; ne clique pas Allow (ça répondrait à la 1ère question par défaut).</div>
               \${renderAskUser(askUser)}
               <div class="action-row">
-                <button class="action-btn aq-allow" onclick="openAskUserPicker('\${q.eventId}','\${s.sessionId}','\${s.tmuxPane}', this)" title="Autorise le tool AskUserQuestion, puis ouvre la modal terminal pour naviguer le picker">📟 Allow + ouvrir le terminal</button>
+                <button class="action-btn aq-allow" onclick="openAskUserPicker('\${q.eventId}','\${s.sessionId}','\${s.tmuxPane}')" title="Ouvre la modal terminal au-dessus du picker déjà actif — sans rien envoyer — pour naviguer les questions">📟 Ouvrir le terminal pour répondre</button>
                 <button class="action-btn deny" onclick="respondTo('\${q.eventId}', 'deny', this)">✗ Deny</button>
               </div>
             </div>

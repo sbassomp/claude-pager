@@ -61,6 +61,57 @@ export function listPending(): PendingQuestion[] {
   return Array.from(pending.values());
 }
 
+export interface SessionPendingSelection {
+  // Event ids that should be removed: either superseded by transcript activity
+  // (answered in the terminal / web) or obsolete idle_prompts.
+  staleIds: string[];
+  // The single pending question to surface for the session, if any.
+  display: PendingQuestion | undefined;
+}
+
+/**
+ * Decide, for one session, which pending events are stale and which (if any)
+ * to show — pure so it can be unit-tested without fs/tmux/transcript I/O.
+ *
+ * A pending event is stale once the transcript has an entry newer than the
+ * notification: while a question is open the transcript's last entry sits at
+ * (permission_prompt) or before (idle_prompt fires ~60s later) `notifiedAt`, so
+ * any later entry means a reply landed — including replies typed directly in the
+ * terminal, which the web never sees otherwise. ALL stale events are reported,
+ * so a backlog drains in one pass. Among the survivors, only the most recent
+ * idle_prompt is kept (older ones are superseded), and permission_prompt wins
+ * over idle_prompt for display.
+ */
+export function selectSessionPending(
+  sessionPending: PendingQuestion[],
+  lastTimestamp: number,
+  staleBufferMs = 2000,
+): SessionPendingSelection {
+  const staleIds: string[] = [];
+
+  let live = sessionPending.filter(p => {
+    if (lastTimestamp > p.notifiedAt + staleBufferMs) {
+      staleIds.push(p.event.id);
+      return false;
+    }
+    return true;
+  });
+
+  const idlePrompts = live
+    .filter(p => p.event.type === 'idle_prompt')
+    .sort((a, b) => a.order - b.order);
+  if (idlePrompts.length > 1) {
+    const keep = idlePrompts[idlePrompts.length - 1];
+    for (const obsolete of idlePrompts) {
+      if (obsolete !== keep) staleIds.push(obsolete.event.id);
+    }
+    live = live.filter(p => p.event.type !== 'idle_prompt' || p === keep);
+  }
+
+  const display = live.find(p => p.event.type === 'permission_prompt') || live[0];
+  return { staleIds, display };
+}
+
 export interface ResolvedResponse {
   question: PendingQuestion;
   response: string;

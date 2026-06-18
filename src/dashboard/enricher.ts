@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
 import { isSessionInjectable } from '../sessions/helpers.js';
-import { listPending, removePending } from '../sessions/events.js';
+import { listPending, removePending, selectSessionPending } from '../sessions/events.js';
 import { listNotes } from '../notes/store.js';
 import { loadConfig } from '../config/index.js';
 import { readTranscriptInfo } from './transcript.js';
@@ -83,25 +83,13 @@ export async function getDashboardData(): Promise<DashboardResponse> {
       .map(async (session): Promise<DashboardSession & { cwd: string }> => {
         const transcript = readTranscriptInfo(session.sessionId, session.cwd);
         const git = await getGitStatus(session.cwd);
-        // Find pending question for this session — prioritize permission_prompt over idle_prompt
+        // Select which pending event(s) to clear vs surface for this session.
+        // Clearing the stale ones is what reaps questions answered directly in
+        // the terminal (the web never sees those replies otherwise) and drains
+        // any accumulated backlog in a single refresh.
         const sessionPending = pending.filter(p => p.event.sessionId === session.sessionId);
-        let pendingQ: (typeof sessionPending)[number] | undefined =
-          sessionPending.find(p => p.event.type === 'permission_prompt')
-          || sessionPending[0];
-
-        // Auto-clear stale pending questions that were answered directly in the terminal
-        if (pendingQ) {
-          const isStale =
-            // Permission prompt: if transcript progressed after notification, it was answered
-            (pendingQ.event.type === 'permission_prompt' && transcript.lastTimestamp > pendingQ.notifiedAt + 2000) ||
-            // Idle prompt: if Claude is now working again, user already replied
-            (pendingQ.event.type === 'idle_prompt' && transcript.state === 'working' && transcript.lastTimestamp > pendingQ.notifiedAt);
-
-          if (isStale) {
-            removePending(pendingQ.event.id);
-            pendingQ = undefined;
-          }
-        }
+        const { staleIds, display: pendingQ } = selectSessionPending(sessionPending, transcript.lastTimestamp);
+        for (const id of staleIds) removePending(id);
 
         // State: pending question overrides transcript state
         let state: DashboardSession['state'] = transcript.state;

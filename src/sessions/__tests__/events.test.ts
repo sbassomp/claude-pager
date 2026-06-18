@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPending, getPending, removePending, listPending, resolveResponse, setPendingTtlMs, getPendingTtlMs } from '../events.js';
-import type { RelayEvent } from '../../types.js';
+import { addPending, getPending, removePending, listPending, resolveResponse, setPendingTtlMs, getPendingTtlMs, selectSessionPending } from '../events.js';
+import type { RelayEvent, PendingQuestion } from '../../types.js';
 
 function makeEvent(id: string, overrides?: Partial<RelayEvent>): RelayEvent {
   return {
@@ -13,6 +13,15 @@ function makeEvent(id: string, overrides?: Partial<RelayEvent>): RelayEvent {
     timestamp: Date.now(),
     ...overrides,
   };
+}
+
+function makePending(
+  id: string,
+  notifiedAt: number,
+  order: number,
+  type: RelayEvent['type'] = 'idle_prompt',
+): PendingQuestion {
+  return { event: makeEvent(id, { type }), notifiedAt, shortId: String(order), order };
 }
 
 describe('event store', () => {
@@ -139,5 +148,63 @@ describe('event store', () => {
       assert.equal(getPendingTtlMs(), 5000, 'invalid values should not clobber the current TTL');
       setPendingTtlMs(12 * 60 * 60 * 1000);
     });
+  });
+});
+
+describe('selectSessionPending', () => {
+  it('keeps a fresh question whose transcript has not advanced past it', () => {
+    // idle_prompt fires ~60s after Claude went idle, so the transcript entry is
+    // older than notifiedAt → not stale, must stay.
+    const q = makePending('evt-1', 100_000, 0, 'idle_prompt');
+    const { staleIds, display } = selectSessionPending([q], 40_000);
+    assert.deepEqual(staleIds, []);
+    assert.equal(display?.event.id, 'evt-1');
+  });
+
+  it('clears a question answered in the terminal (transcript moved past it)', () => {
+    const q = makePending('evt-1', 100_000, 0, 'permission_prompt');
+    const { staleIds, display } = selectSessionPending([q], 105_000);
+    assert.deepEqual(staleIds, ['evt-1']);
+    assert.equal(display, undefined);
+  });
+
+  it('drains a whole backlog of stale questions in a single pass', () => {
+    const backlog = [
+      makePending('a', 10_000, 0),
+      makePending('b', 20_000, 1),
+      makePending('c', 30_000, 2),
+    ];
+    const { staleIds, display } = selectSessionPending(backlog, 100_000);
+    assert.deepEqual(staleIds.sort(), ['a', 'b', 'c']);
+    assert.equal(display, undefined);
+  });
+
+  it('collapses superseded idle_prompts down to the most recent', () => {
+    // None are stale (transcript is older than all), but only the newest
+    // idle_prompt is meaningful.
+    const prompts = [
+      makePending('old', 100_000, 0, 'idle_prompt'),
+      makePending('mid', 101_000, 1, 'idle_prompt'),
+      makePending('new', 102_000, 2, 'idle_prompt'),
+    ];
+    const { staleIds, display } = selectSessionPending(prompts, 0);
+    assert.deepEqual(staleIds.sort(), ['mid', 'old']);
+    assert.equal(display?.event.id, 'new');
+  });
+
+  it('prioritizes a permission_prompt over an idle_prompt for display', () => {
+    const prompts = [
+      makePending('idle', 100_000, 0, 'idle_prompt'),
+      makePending('perm', 101_000, 1, 'permission_prompt'),
+    ];
+    const { staleIds, display } = selectSessionPending(prompts, 0);
+    assert.deepEqual(staleIds, []);
+    assert.equal(display?.event.id, 'perm');
+  });
+
+  it('returns nothing for a session with no pending events', () => {
+    const { staleIds, display } = selectSessionPending([], 100_000);
+    assert.deepEqual(staleIds, []);
+    assert.equal(display, undefined);
   });
 });
