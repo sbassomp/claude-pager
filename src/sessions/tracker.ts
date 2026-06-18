@@ -5,6 +5,7 @@ import { uptime } from 'node:os';
 import { getDataDir, ensureDataDir } from '../config/index.js';
 import { safeJsonParse } from '../utils/json.js';
 import { isValidSessionId } from '../utils/validation.js';
+import { logDaemon } from '../utils/log.js';
 import type { SessionInfo } from '../types.js';
 
 function sessionsDir(): string {
@@ -53,23 +54,39 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
-function isTmuxPaneAlive(pane: string): boolean {
+/**
+ * Snapshot of all live tmux pane ids in a single call, or `null` when tmux
+ * could not be reached (server busy, timeout, not running).
+ *
+ * Returning `null` is load-bearing: it lets the caller distinguish "tmux says
+ * this pane is gone" (a definitive negative — safe to reap) from "tmux did not
+ * answer" (transient — must NOT reap, or a momentary hiccup under load silently
+ * deletes still-running sessions that never get re-registered).
+ */
+function liveTmuxPanes(): Set<string> | null {
   try {
-    execFileSync('tmux', ['has-session', '-t', pane], { timeout: 2000 });
-    return true;
+    const out = execFileSync('tmux', ['list-panes', '-a', '-F', '#{pane_id}'], { timeout: 2000 })
+      .toString()
+      .trim();
+    return new Set(out ? out.split('\n') : []);
   } catch {
-    return false;
+    return null;
   }
 }
 
-function isSessionAlive(info: SessionInfo): boolean {
+export function isSessionAlive(info: SessionInfo, livePanes: Set<string> | null): boolean {
   // Sessions registered before the last system boot are always dead, even if
   // their tmuxPane id (e.g. %1) has been reassigned to an unrelated new pane.
+  // This is a definitive check (uptime-based), independent of tmux.
   const bootTime = Date.now() - uptime() * 1000;
   if (info.timestamp && info.timestamp < bootTime) return false;
 
   if (info.tmuxPane) {
-    return isTmuxPaneAlive(info.tmuxPane);
+    // Only reap on a definitive negative: tmux answered AND the pane is absent.
+    // If tmux was unreachable (livePanes === null), assume the session is still
+    // alive — never delete a live session because of a transient tmux failure.
+    if (livePanes === null) return true;
+    return livePanes.has(info.tmuxPane);
   }
   return isProcessAlive(info.pid);
 }
@@ -79,12 +96,23 @@ export function cleanDeadSessions(): number {
   const dir = sessionsDir();
   if (!existsSync(dir)) return 0;
 
+  // One cheap tmux call for the whole sweep instead of one blocking probe per
+  // session. If it fails, tmux-backed sessions are left untouched (see
+  // isSessionAlive / liveTmuxPanes).
+  const livePanes = liveTmuxPanes();
+
   for (const file of readdirSync(dir).filter(f => f.endsWith('.json'))) {
     const path = join(dir, file);
     const info = safeJsonParse<SessionInfo | null>(readFileSync(path, 'utf-8'), null);
-    if (!info || !isSessionAlive(info)) {
+    if (!info) {
       unlinkSync(path);
       cleaned++;
+      continue;
+    }
+    if (!isSessionAlive(info, livePanes)) {
+      unlinkSync(path);
+      cleaned++;
+      logDaemon('session-reaped', info.sessionId, info.tmuxPane || `pid:${info.pid}`);
     }
   }
   return cleaned;
