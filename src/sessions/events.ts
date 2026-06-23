@@ -108,7 +108,12 @@ export function selectSessionPending(
     live = live.filter(p => p.event.type !== 'idle_prompt' || p === keep);
   }
 
-  const display = live.find(p => p.event.type === 'permission_prompt') || live[0];
+  // Surface the MOST RECENT survivor — the question Claude is actually waiting
+  // on right now — so the user lands on the current question instead of the
+  // head of an already-answered backlog. permission_prompt still wins over
+  // idle_prompt (it is a hard block), but among each type the newest is shown.
+  const byNewest = [...live].sort((a, b) => b.order - a.order);
+  const display = byNewest.find(p => p.event.type === 'permission_prompt') || byNewest[0];
   return { staleIds, display };
 }
 

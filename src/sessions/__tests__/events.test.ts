@@ -192,6 +192,18 @@ describe('selectSessionPending', () => {
     assert.equal(display?.event.id, 'new');
   });
 
+  it('surfaces the most recent question, not the head of the backlog', () => {
+    // None stale (transcript older than all): the user should land on the
+    // current question, not walk the already-answered pile from the top.
+    const prompts = [
+      makePending('q1', 100_000, 0, 'permission_prompt'),
+      makePending('q2', 101_000, 1, 'permission_prompt'),
+      makePending('q3', 102_000, 2, 'permission_prompt'),
+    ];
+    const { display } = selectSessionPending(prompts, 0);
+    assert.equal(display?.event.id, 'q3');
+  });
+
   it('prioritizes a permission_prompt over an idle_prompt for display', () => {
     const prompts = [
       makePending('idle', 100_000, 0, 'idle_prompt'),

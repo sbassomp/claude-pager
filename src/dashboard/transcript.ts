@@ -1,4 +1,4 @@
-import { readFileSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
@@ -26,10 +26,39 @@ function projectDir(cwd: string): string {
   return join(homedir(), '.claude', 'projects', encoded);
 }
 
+// sessionId → resolved transcript path. The launch dir of a session never
+// changes, so a positive hit stays valid for the session's lifetime.
+const pathCache = new Map<string, string>();
+
 function findTranscriptPath(cwd: string, sessionId: string): string | null {
-  const dir = projectDir(cwd);
-  const file = join(dir, `${sessionId}.jsonl`);
-  return existsSync(file) ? file : null;
+  const cached = pathCache.get(sessionId);
+  if (cached && existsSync(cached)) return cached;
+
+  // Fast path: Claude Code usually encodes the launch cwd directly.
+  const direct = join(projectDir(cwd), `${sessionId}.jsonl`);
+  if (existsSync(direct)) {
+    pathCache.set(sessionId, direct);
+    return direct;
+  }
+
+  // Fallback: Claude Code stores the transcript under the directory it was
+  // *launched* from, which differs from the session's runtime cwd when Claude
+  // was started in a parent dir and runs in a subdir (or the cwd changed). The
+  // session's stored cwd then encodes to the wrong project dir. sessionId is a
+  // globally-unique UUID, so scan every project dir for <sessionId>.jsonl.
+  const projectsRoot = join(homedir(), '.claude', 'projects');
+  try {
+    for (const entry of readdirSync(projectsRoot)) {
+      const candidate = join(projectsRoot, entry, `${sessionId}.jsonl`);
+      if (existsSync(candidate)) {
+        pathCache.set(sessionId, candidate);
+        return candidate;
+      }
+    }
+  } catch {
+    // ~/.claude/projects missing — nothing to resolve
+  }
+  return null;
 }
 
 function humanizeSlug(slug: string): string {
