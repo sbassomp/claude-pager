@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import type { RelayConfig, RelayEvent } from '../types.js';
 import type { ChannelProvider } from '../channels/channel.js';
 import type { InputInjector } from '../injectors/injector.js';
-import { addPending, getPending, listPending, removePending, resolveResponse } from '../sessions/events.js';
+import { addPending, getPending, listPending, reapStalePending, removePending, removePendingForSession, resolveResponse } from '../sessions/events.js';
 import { getSession, removeSession, cleanDeadSessions, listSessions } from '../sessions/tracker.js';
 import { isSessionInjectable } from '../sessions/helpers.js';
 import { addNote, listNotes, getNote, removeNote, markSent, updateNoteText, reorderNotes, saveImage, setNoteImage, imagesDir } from '../notes/store.js';
@@ -152,8 +152,11 @@ export async function createServer(deps: DaemonDeps) {
     },
   );
 
-  // List pending questions
+  // List pending questions. Reap first, like the dashboard does: dead sessions
+  // and questions answered since (transcript moved on) must not be listed.
   app.get('/api/v1/pending', async () => {
+    cleanDeadSessions();
+    reapStalePending((sessionId, cwd) => readTranscriptInfo(sessionId, cwd).lastTimestamp);
     return { pending: listPending() };
   });
 
@@ -256,6 +259,7 @@ export async function createServer(deps: DaemonDeps) {
       if (!removed) {
         return reply.status(404).send({ error: 'Session not found' });
       }
+      removePendingForSession(sessionId);
       return { ok: true, sessionId };
     },
   );

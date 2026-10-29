@@ -7,6 +7,7 @@ import { safeJsonParse } from '../utils/json.js';
 import { isValidSessionId } from '../utils/validation.js';
 import { logDaemon } from '../utils/log.js';
 import type { SessionInfo } from '../types.js';
+import { removePendingForSession } from './events.js';
 
 function sessionsDir(): string {
   return join(getDataDir(), 'sessions');
@@ -112,6 +113,8 @@ export function cleanDeadSessions(): number {
     if (!isSessionAlive(info, livePanes)) {
       unlinkSync(path);
       cleaned++;
+      // A dead session can no longer be waiting on the user.
+      removePendingForSession(info.sessionId);
       logDaemon('session-reaped', info.sessionId, info.tmuxPane || `pid:${info.pid}`);
     }
   }

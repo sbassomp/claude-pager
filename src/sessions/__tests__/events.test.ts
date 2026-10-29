@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { addPending, getPending, removePending, listPending, resolveResponse, setPendingTtlMs, getPendingTtlMs, selectSessionPending } from '../events.js';
+import { addPending, getPending, removePending, listPending, resolveResponse, setPendingTtlMs, getPendingTtlMs, selectSessionPending, reapStalePending, removePendingForSession } from '../events.js';
 import type { RelayEvent, PendingQuestion } from '../../types.js';
 
 function makeEvent(id: string, overrides?: Partial<RelayEvent>): RelayEvent {
@@ -218,5 +218,37 @@ describe('selectSessionPending', () => {
     const { staleIds, display } = selectSessionPending([], 100_000);
     assert.deepEqual(staleIds, []);
     assert.equal(display, undefined);
+  });
+});
+
+describe('store-wide reaping', () => {
+  beforeEach(() => {
+    for (const q of listPending()) {
+      removePending(q.event.id);
+    }
+  });
+
+  it('reaps answered questions of every session, keeping the live ones', () => {
+    addPending(makeEvent('answered', { sessionId: 'resumed' }));
+    addPending(makeEvent('waiting', { sessionId: 'blocked' }));
+    const now = Date.now();
+    const reaped = reapStalePending(sessionId => (sessionId === 'resumed' ? now + 10_000 : 0));
+    assert.equal(reaped, 1);
+    assert.deepEqual(listPending().map(q => q.event.id), ['waiting']);
+  });
+
+  it('passes the event project as cwd to the activity lookup', () => {
+    addPending(makeEvent('evt', { sessionId: 's', project: '/p' }));
+    const seen: string[] = [];
+    reapStalePending((sessionId, cwd) => { seen.push(`${sessionId}:${cwd}`); return 0; });
+    assert.deepEqual(seen, ['s:/p']);
+  });
+
+  it('removes every pending event of an ended session only', () => {
+    addPending(makeEvent('a1', { sessionId: 'ended' }));
+    addPending(makeEvent('a2', { sessionId: 'ended', type: 'idle_prompt' }));
+    addPending(makeEvent('b1', { sessionId: 'alive' }));
+    assert.equal(removePendingForSession('ended'), 2);
+    assert.deepEqual(listPending().map(q => q.event.id), ['b1']);
   });
 });

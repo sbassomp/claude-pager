@@ -117,6 +117,42 @@ export function selectSessionPending(
   return { staleIds, display };
 }
 
+/** Drop every pending event of a session (it ended or was dismissed). */
+export function removePendingForSession(sessionId: string): number {
+  let removed = 0;
+  for (const q of Array.from(pending.values())) {
+    if (q.event.sessionId === sessionId) {
+      removePending(q.event.id);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+/**
+ * Apply selectSessionPending to EVERY session holding pending events, so that
+ * readers other than the dashboard (GET /api/v1/pending) never see questions
+ * already answered. The transcript lookup is injected to keep this module free
+ * of filesystem access.
+ */
+export function reapStalePending(lastActivityOf: (sessionId: string, cwd: string) => number): number {
+  const bySession = new Map<string, PendingQuestion[]>();
+  for (const q of listPending()) {
+    const list = bySession.get(q.event.sessionId) || [];
+    list.push(q);
+    bySession.set(q.event.sessionId, list);
+  }
+
+  let reaped = 0;
+  for (const [sessionId, sessionPending] of bySession) {
+    const lastTimestamp = lastActivityOf(sessionId, sessionPending[0].event.project);
+    const { staleIds } = selectSessionPending(sessionPending, lastTimestamp);
+    for (const id of staleIds) removePending(id);
+    reaped += staleIds.length;
+  }
+  return reaped;
+}
+
 export interface ResolvedResponse {
   question: PendingQuestion;
   response: string;
