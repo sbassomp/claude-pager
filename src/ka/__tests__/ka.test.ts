@@ -147,7 +147,8 @@ describe('SessionStatePublisher', () => {
     await h.at(4000);
     await h.at(7000);
     await h.at(20_000);
-    assert.deepEqual(h.sent.map(u => u.state), ['idle', 'working']);
+    // The stale idle is never re-sent; only the resync after recovery repeats working.
+    assert.deepEqual(h.sent.map(u => u.state), ['idle', 'working', 'working']);
   });
 
   it('does not retry a rejected request', async () => {
@@ -157,5 +158,34 @@ describe('SessionStatePublisher', () => {
     await h.at(3000);
     await h.at(60_000);
     assert.equal(h.sent.length, 1);
+  });
+
+  it('re-sends every live session state every 10 minutes, keeping its start time', async () => {
+    const h = harness();
+    h.set([snap('a', 'idle'), snap('b', 'working')]);
+    await h.at(0);
+    await h.at(3000);
+    assert.equal(h.sent.length, 2);
+    await h.at(599_000);
+    assert.equal(h.sent.length, 2);
+    await h.at(600_000);
+    assert.equal(h.sent.length, 4);
+    assert.deepEqual(h.sent.slice(2).map(u => [u.session_id, u.at]), [
+      ['a', new Date(0).toISOString()],
+      ['b', new Date(0).toISOString()],
+    ]);
+  });
+
+  it('resyncs every session right after a success that follows a failure', async () => {
+    const h = harness([{ status: 'sent' }, { status: 'retry', afterMs: 5000 }]);
+    h.set([snap('a', 'idle'), snap('b', 'idle')]);
+    await h.at(0);
+    await h.at(3000); // a sent, b deferred
+    await h.at(8000); // b retried successfully → resync requested
+    assert.equal(h.sent.length, 3);
+    await h.at(9000);
+    assert.deepEqual(h.sent.slice(3).map(u => u.session_id), ['a', 'b']);
+    await h.at(10_000);
+    assert.equal(h.sent.length, 5);
   });
 });
