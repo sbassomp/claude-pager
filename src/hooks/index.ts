@@ -224,6 +224,26 @@ async function handleSessionStart(): Promise<void> {
   }
 }
 
+async function handleSessionEnd(): Promise<void> {
+  const input = await readStdin();
+  const data = JSON.parse(input);
+  const sid = data.session_id || '-';
+
+  const port = process.env.CLAUDE_PAGER_PORT || '17380';
+  try {
+    await fetch(`http://127.0.0.1:${port}/api/v1/session-end`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: data.session_id }),
+      signal: AbortSignal.timeout(2000),
+    });
+    logHook('session-end', sid, `reason=${data.reason || '-'}`);
+  } catch {
+    // Daemon down: the session is reaped later when its pane/process is gone
+    logHook('session-end', sid, 'error:daemon-unreachable');
+  }
+}
+
 function preToolFile(sessionId: string): string {
   return join(PRE_TOOL_DIR, `${sessionId}.json`);
 }
@@ -341,6 +361,12 @@ switch (command) {
       process.exit(1);
     });
     break;
+  case 'session-end':
+    handleSessionEnd().catch(err => {
+      console.error('[hook] session-end error:', err);
+      process.exit(1);
+    });
+    break;
   case 'pre-tool-use':
     handlePreToolUse().catch(err => {
       console.error('[hook] pre-tool-use error:', err);
@@ -348,6 +374,6 @@ switch (command) {
     });
     break;
   default:
-    console.error(`Usage: claude-pager-hook <session-start|notification|pre-tool-use>`);
+    console.error(`Usage: claude-pager-hook <session-start|session-end|notification|pre-tool-use>`);
     process.exit(1);
 }

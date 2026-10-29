@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { listSessions, cleanDeadSessions } from '../sessions/tracker.js';
 import { isSessionInjectable } from '../sessions/helpers.js';
 import { listPending, removePending, selectSessionPending } from '../sessions/events.js';
+import { deriveSessionState } from '../sessions/state.js';
+import type { SessionState } from '../sessions/state.js';
 import { listNotes } from '../notes/store.js';
 import { loadConfig } from '../config/index.js';
 import { readTranscriptInfo } from './transcript.js';
@@ -30,7 +32,7 @@ function updatePaneTitle(tmuxPane: string, title: string): void {
 export interface DashboardSession {
   sessionId: string;
   title: string;
-  state: 'working' | 'waiting_input' | 'waiting_permission' | 'idle' | 'unknown';
+  state: SessionState;
   pendingQuestion?: {
     eventId: string;
     shortId: string;
@@ -91,13 +93,7 @@ export async function getDashboardData(): Promise<DashboardResponse> {
         const { staleIds, display: pendingQ } = selectSessionPending(sessionPending, transcript.lastTimestamp);
         for (const id of staleIds) removePending(id);
 
-        // State: pending question overrides transcript state
-        let state: DashboardSession['state'] = transcript.state;
-        if (pendingQ) {
-          state = pendingQ.event.type === 'permission_prompt'
-            ? 'waiting_permission'
-            : 'waiting_input';
-        }
+        const state = deriveSessionState(transcript.state, pendingQ);
 
         // Update tmux pane title with the session title
         if (session.tmuxPane && transcript.title && transcript.title !== 'No transcript') {

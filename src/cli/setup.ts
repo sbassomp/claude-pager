@@ -73,6 +73,18 @@ const HOOKS_CONFIG = {
       ],
     },
   ],
+  SessionEnd: [
+    {
+      matcher: '',
+      hooks: [
+        {
+          type: 'command',
+          command: 'claude-pager-hook session-end',
+          timeout: 3000,
+        },
+      ],
+    },
+  ],
   Notification: [
     {
       matcher: '',

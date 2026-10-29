@@ -264,6 +264,32 @@ export async function createServer(deps: DaemonDeps) {
     },
   );
 
+  // Session ended (SessionEnd hook): forget it and its pending questions. The
+  // Ka publisher reports it `ended` on its next tick.
+  app.post<{ Body: { session_id: string } }>(
+    '/api/v1/session-end',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['session_id'],
+          properties: { session_id: { type: 'string', minLength: 1 } },
+        } as const,
+      },
+    },
+    async (request, reply) => {
+      const sessionId = request.body.session_id;
+      if (!isValidSessionId(sessionId)) {
+        return reply.status(400).send({ error: 'Invalid session_id format' });
+      }
+      removeSession(sessionId);
+      const removed = removePendingForSession(sessionId);
+      logDaemon('session-end', sessionId, `pending-removed=${removed}`);
+      broadcastSSE('refresh');
+      return { ok: true, sessionId };
+    },
+  );
+
   // List active sessions
   app.get('/api/v1/sessions', async () => {
     cleanDeadSessions();

@@ -9,6 +9,7 @@ import { createChannelHandlers } from './handlers.js';
 import { closeAllSSEClients } from '../dashboard/sse.js';
 import { assertDashboardConfig } from './auth.js';
 import { setPendingTtlMs } from '../sessions/events.js';
+import { startKaPublisher } from '../ka/index.js';
 
 const SHUTDOWN_TIMEOUT_MS = 3000;
 
@@ -98,6 +99,9 @@ export async function startDaemon(): Promise<void> {
   const handlers = createChannelHandlers(channel, injector);
   channel.startListening(handlers);
 
+  // Push session state transitions to Ka (opt-in via ~/.config/ka/config)
+  const stopKaPublisher = startKaPublisher();
+
   // Graceful shutdown
   let shuttingDown = false;
   const shutdown = async () => {
@@ -105,6 +109,7 @@ export async function startDaemon(): Promise<void> {
     shuttingDown = true;
     console.log('\nShutting down...');
     channel.stopListening();
+    stopKaPublisher?.();
     closeAllSSEClients();
     // Race app.close() against a hard timeout: long-poll/SSE/keep-alive sockets
     // can otherwise keep Fastify's graceful close hanging indefinitely.
