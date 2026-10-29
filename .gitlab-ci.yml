@@ -1,15 +1,11 @@
 include:
   - template: Auto-DevOps.gitlab-ci.yml
 
-# The runner mounts the host Docker socket (Docker 29, API >= 1.44), which
-# rejects the Docker client pinned by the Auto DevOps build template (API 1.43).
 variables:
-  AUTO_BUILD_IMAGE_VERSION: 'v4.19.0' # ships Docker 29.1.4
-
-build:
-  services:
-    - name: 'docker:29.1.4-dind'
-      command: ['--tls=false', '--host=tcp://0.0.0.0:2375']
+  # claude-pager ships as an npm package: no container image to build (or
+  # scan). The buildpack build also breaks on the runner's Docker 29 image store.
+  BUILD_DISABLED: 'true'
+  CONTAINER_SCANNING_DISABLED: 'true'
 
 # The template's CodeClimate engines are no longer pullable: report ESLint
 # findings in GitLab's Code Quality format instead.
