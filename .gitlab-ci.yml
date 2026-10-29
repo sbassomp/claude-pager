@@ -2,8 +2,7 @@ include:
   - template: Auto-DevOps.gitlab-ci.yml
 
 # The runner mounts the host Docker socket (Docker 29, API >= 1.44), which
-# rejects the Docker clients pinned by the Auto DevOps templates (API 1.41 for
-# code_quality, 1.43 for build). Override them with recent clients.
+# rejects the Docker client pinned by the Auto DevOps build template (API 1.43).
 variables:
   AUTO_BUILD_IMAGE_VERSION: 'v4.19.0' # ships Docker 29.1.4
 
@@ -12,10 +11,11 @@ build:
     - name: 'docker:29.1.4-dind'
       command: ['--tls=false', '--host=tcp://0.0.0.0:2375']
 
+# The template's CodeClimate engines are no longer pullable: report ESLint
+# findings in GitLab's Code Quality format instead.
 code_quality:
-  image: docker:29.1.4
-  variables:
-    CODE_QUALITY_IMAGE_TAG: '0.96.0-gitlab.5'
-  services:
-    - name: 'docker:29.1.4-dind'
-      command: ['--tls=false', '--host=tcp://0.0.0.0:2375']
+  image: node:22
+  services: []
+  script:
+    - npm ci --no-audit --no-fund
+    - npx eslint src/ -f ./tools/eslint-gitlab-formatter.mjs -o gl-code-quality-report.json
